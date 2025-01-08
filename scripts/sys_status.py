@@ -5,14 +5,14 @@ import rospy
 from std_msgs.msg import Float32MultiArray, Float32
 import subprocess
 
-def sys_monitor():
+
+def sys_status():
     cpu_usage_pub = rospy.Publisher('/sys_status/cpu_usage', Float32, queue_size=10)
     cpu_freq_pub = rospy.Publisher('/sys_status/cpu_freq', Float32, queue_size=10)
     gpu_usage_pub = rospy.Publisher('/sys_status/gpu_usage', Float32, queue_size=10)
     memory_pub = rospy.Publisher('/sys_status/memory', Float32, queue_size=10)
-    battery_pub = rospy.Publisher('/sys_status/battery', Float32, queue_size=10)
     
-    '''CPU usage, CPU frequency, GPU usage, memory usage, battery percentage'''
+    '''CPU usage, CPU frequency, GPU usage, memory usage'''
     
     #cpu usage
     cpu_usage = psutil.cpu_percent(interval=1)
@@ -37,18 +37,11 @@ def sys_monitor():
     #memory usage
     memory_percent = psutil.virtual_memory().percent
 
-    #battery percentage
-    try:
-        battery = psutil.sensors_battery()
-        battery_percent = battery.percent if battery else 0.0
-    except Exception:
-        battery_percent = 0.0
-
+    
     cpu_usage_pub.publish(cpu_usage)
     cpu_freq_pub.publish(cpu_freq)
     gpu_usage_pub.publish(gpu_usage)
     memory_pub.publish(memory_percent)
-    battery_pub.publish(battery_percent)
 
 if __name__ == '__main__':
     try:
@@ -56,8 +49,9 @@ if __name__ == '__main__':
         rate = rospy.Rate(1)  # 1Hz
 
         while not rospy.is_shutdown():
-            sys_monitor()
+            sys_status()
             rate.sleep()
+        sys_status()
 
     except rospy.ROSInterruptException:
         pass
