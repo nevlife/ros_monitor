@@ -37,6 +37,10 @@ def sys_status():
     #memory usage
     memory_percent = psutil.virtual_memory().percent
 
+    print(cpu_usage)
+    print(cpu_freq)
+    print(gpu_usage)
+    print(memory_percent)
     
     cpu_usage_pub.publish(cpu_usage)
     cpu_freq_pub.publish(cpu_freq)

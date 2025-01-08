@@ -1,22 +1,18 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-import sys
-import os
-
 import subprocess
 
 def main():
-    process1 = subprocess.Popen(['rosrun', 'vehicle_diag', 'sys_status_monitor.py'], 
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    print('Starting sys_status_monitor.py')
+    # 각 터미널에서 명령어 실행
+    subprocess.Popen(['gnome-terminal', '--', 'rosrun', 'vehicle_diag', 'gui.py'])
+    print('Starting gui.py in a new terminal')
 
-    process2 = subprocess.Popen(['rosrun', 'vehicle_diag', 'gui.py'], 
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    print('Starting gui.py')
-    
-    process3 = subprocess.Popen(['rosrun', 'vehicle_diag', 'sensor_status.py'], 
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    print('Starting sensor_status.py')
-    
+    subprocess.Popen(['gnome-terminal', '--', 'rosrun', 'vehicle_diag', 'sys_status.py'])
+    print('Starting sys_status_monitor.py in a new terminal')
+
+    subprocess.Popen(['gnome-terminal', '--', 'rosrun', 'vehicle_diag', 'sensor_status.py'])
+    print('Starting sensor_status.py in a new terminal')
+
+
 if __name__ == '__main__':
     main()

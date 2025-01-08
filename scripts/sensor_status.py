@@ -18,6 +18,7 @@ def sensor_status():
     msg = Int8MultiArray()
     msg.data = status_list
     
+    print(bool(lidar_status), bool(gps_status), bool(camera_status))
     sensor_status_pub.publish(msg)    
 
 if __name__ == '__main__':
