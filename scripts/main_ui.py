@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from status_ui import SystemMonitorGUI
 
 
-class MainWindow(QWidget):
+class VehicleDiag(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -40,7 +40,7 @@ def main():
     rospy.init_node('vehicle_diag', anonymous=True)
     signal.signal(signal.SIGINT, signal_handler)
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = VehicleDiag()
     window.show()
     sys.exit(app.exec())
 
