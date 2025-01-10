@@ -6,8 +6,9 @@ from std_msgs.msg import Bool, Int8MultiArray
 
 def random_bool():
     return random.choice([True, False])
+
 def sensor_status():
-    sensor_status_pub  = rospy.Publisher('/sensor_status/sensor_status_bool', Int8MultiArray, queue_size=10)
+    sensor_status_pub  = rospy.Publisher('/sensor_status', Int8MultiArray, queue_size=10)
     
     lidar_status = random_bool()
     gps_status = random_bool()
@@ -21,7 +22,7 @@ def sensor_status():
     print(bool(lidar_status), bool(gps_status), bool(camera_status))
     sensor_status_pub.publish(msg)    
 
-if __name__ == '__main__':
+def main():
     try:
         rospy.init_node('sensor_status', anonymous=True)
         rate = rospy.Rate(1)  # 1Hz
@@ -33,3 +34,6 @@ if __name__ == '__main__':
 
     except rospy.ROSInterruptException:
         pass
+
+if __name__ == '__main__':
+    main()
