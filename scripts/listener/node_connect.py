@@ -3,7 +3,7 @@
 import rospy
 import numpy as np
 import cv2
-from std_msgs.msg import UInt32
+from std_msgs.msg import Bool, UInt32, Float32MultiArray
 from sensor_msgs.msg import Image, Imu, NavSatFix, CompressedImage, CameraInfo
 from geometry_msgs.msg import TwistWithCovarianceStamped
 
@@ -11,8 +11,12 @@ from geometry_msgs.msg import TwistWithCovarianceStamped
 class MultiTopicSubscriber:
     def __init__(self):
 
-        rospy.init_node("multi_topic_subscriber", anonymous=True)
+        rospy.init_node("node_connecter", anonymous=True)
 
+        self.status_pub = rospy.Publisher('/node_connecter/status_pub', Bool, queu_size=10) 
+        self.data_pub = rospy.Publisher('/node_connecter/node_data', Float32MultiArray, queu_size=10)
+        
+        
         self.data_init()
 
         # Subscriber 설정
@@ -26,109 +30,39 @@ class MultiTopicSubscriber:
         #rospy.Subscriber("/zed_node/depth/depth_registered", Image , self.callback_zed_node_depth_depth_registered)
         rospy.Subscriber("/zed_node/depth/camera_info", CameraInfo , self.callback_zed_depth_camera_info)
         #rospy.Subscriber("/usb_cam/image_raw/compressed", CompressedImage, self.callback_usb_camera)
-        
-        
+
         rospy.Timer(rospy.Duration(1.0), self.check_missing_data)
         self.rate = rospy.Rate(10)  # 10Hz
 
     def check_missing_data(self, event):
         if self.rpm is None:
-            rospy.logwarn("No data received from /current_motor_RPM")
-        
+            rospy.logwarn('[RPM Data] No data received from /current_motor_RPM topic.')
+                
         if self.steer is None:
-            rospy.logwarn("No data received from /current_steer")
-        
+            rospy.logwarn('[Steer Data] No data received from /current_steer topic.')
+                
         if self.gps_fix is None:
-            rospy.logwarn("No data received from /ublox_gps/fix")
-        
+            rospy.logwarn('[GPS Fix] No data received from /ublox_gps/fix topic.')
+                
         if self.gps_fix_velocity is None:
-            rospy.logwarn("No data received from /ublox_gps/fix_velocity")
-        
+            rospy.logwarn('[GPS Velocity] No data received from /ublox_gps/fix_velocity topic.')
+                
         if self.imu is None:
-            rospy.logwarn("No data received from /imu/data")
-        
-        if self.zed_left_camera_img is None:
-            rospy.logwarn("No data received from zed_left_camera_img")
-        
+            rospy.logwarn('[IMU Data] No data received from /imu/data topic.')
+
         if self.zed_left_camera_info is None:
-            rospy.logwarn("No data received from zed_left_camera_info")
-        
-        if self.zed_depth_camera_img is None:
-            rospy.logwarn("No data received from zed_depth_camera_img")
-        
+            rospy.logwarn('[ZED Left Camera Info] No data received from /zed_node/left/camera_info topic.')
+                
         if self.zed_depth_camera_info is None:
-            rospy.logwarn("No data received from zed_depth_camera_info")
-        
-        if self.usb_camera is None:
-            rospy.logwarn("No data received from /usb_cam/image_raw/compressed")
+            rospy.logwarn('[ZED Depth Camera Info] No data received from /zed_node/depth/camera_info topic.')
+
 
     def spin(self):
         while not rospy.is_shutdown():
             self.rate.sleep()
 
-    def process_camera_image(self, msg, window_name):
-        """
-        공통적인 카메라 이미지 처리 로직을 별도의 함수로 분리
-        """
-        try:
-            # 메시지 데이터를 OpenCV 이미지로 변환
-            np_arr = np.frombuffer(msg.data, np.uint8)
-            camera_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-            # 유효성 검사 및 이미지 출력
-            if camera_image is not None and camera_image.shape[0] > 0 and camera_image.shape[1] > 0:
-                cv2.imshow(window_name, camera_image)
-                cv2.waitKey(1)
-            else:
-                rospy.logwarn(f"Received invalid camera image in {window_name}")
-            
-            return camera_image
-        except Exception as e:
-            rospy.logerr(f"Error processing camera image in {window_name}: {e}")
-            return None
-
-    # 콜백 함수들
-    def callback_usb_camera(self, msg):
-        self.process_camera_image(msg, self.usb_camera)
-
-    def callback_zed_node_left_image_rect_color(self, msg):
-        self.process_camera_image(msg, self.zed_left_camera_img)
-
-    def callback_zed_node_depth_depth_registered(self, msg):
-        self.process_camera_image(msg, self.zed_depth_camera_img)
         
     '''callback fuc'''
-    # def callback_usb_camera(self, msg):
-    #     try:
-    #         np_arr = np.frombuffer(msg.data, np.uint8)
-    #         self.usb_camera = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    #         cv2.imshow('Camera Image', self.usb_camera)
-    #         cv2.waitKey(1)
-    #         if self.usb_camera is not None and self.usb_camera.shape[0] > 0 and self.usb_camera.shape[1] > 0:
-    #             cv2.imshow('Camera Image', self.usb_camera)
-    #         else:
-    #             rospy.logwarn("Received invalid camera image")
-    #     except Exception as e:
-    #         rospy.logerr(f"Error processing camera image: {e}")
-            
-    # def callback_zed_node_left_image_rect_color(self, msg):
-    #     try:
-    #         np_arr = np.frombuffer(msg.data, np.uint8)
-    #         self.zed_left_camera_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    #         cv2.imshow('Camera Image', self.zed_left_camera_img)
-    #         cv2.waitKey(1)
-    #     except Exception as e:
-    #         rospy.logerr(f"Error processing camera image: {e}")
-    
-    # def callback_zed_node_depth_depth_registered(self, msg):
-    #     try:
-    #         np_arr = np.frombuffer(msg.data, np.uint8)
-    #         self.zed_depth_camera_img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    #         cv2.imshow('Camera Image', self.zed_depth_camera_img)
-    #         cv2.waitKey(1)
-    #     except Exception as e:
-    #         rospy.logerr(f"Error processing camera image: {e}")
-            
     def callback_motor_rpm(self, msg):
         self.rpm = msg.data
 
@@ -238,6 +172,7 @@ class MultiTopicSubscriber:
         self.zed_left_camera_info['roi']['do_rectify'] = msg.roi.do_rectify
 
     def data_init(self):
+        self.nodes = ()
         self.rpm = None
         self.steer = None
         self.usb_camera = None
@@ -247,16 +182,10 @@ class MultiTopicSubscriber:
         self.gps_fix = {
             'header': {
                 'seq': None,
-                'stamp': {
-                    'secs': None,
-                    'nsecs': None
-                    },
-                'frame_id': None, 
+                'stamp': {'secs': None,'nsecs': None},
+                'frame_id': None
             },
-            'status': {
-                'status': None,
-                'service': None,
-            },
+            'status': {'status': None,'service': None},
             'latitude': None,
             'longitude': None,
             'altitude': None,
@@ -267,71 +196,38 @@ class MultiTopicSubscriber:
         self.gps_fix_velocity = {
             'header': {
                 'seq': None,
-                'stamp': {
-                    'secs': None,
-                    'nsecs': None
-                    },
-                'frame_id': None,
+                'stamp': {'secs': None,'nsecs': None},
+                'frame_id': None
             },
-            'linear': {
-                'x': None,
-                'y': None,
-                'z': None,
-            },
-            'angular': {
-                'x': None,
-                'y': None,
-                'z': None,
-            },
+            'linear': {'x': None,'y': None,'z': None},
+            'angular': {'x': None,'y': None,'z': None},
             'covariance': []
         }
         
         self.imu = {
             'header': {
                     'seq': None,
-                    'stamp': {
-                        'secs': None,
-                        'nsecs': None
-                        },
-                    'frame_id': None,
+                    'stamp': {'secs': None,'nsecs': None},
+                    'frame_id': None
             },
-            'orientation': {
-                'x': None,
-                'y': None,
-                'z': None,
-                'w': None,
-            },
+            'orientation': {'x': None,'y': None,'z': None,'w': None},
             'orientation_covariance': [],
-            'angular_velocity': {
-                'x': None,
-                'y': None,
-                'z': None,
-            },
+            'angular_velocity': {'x': None,'y': None,'z': None},
             'angular_velocity_covariance': [],
-            'linear_acceleration': {
-                'x': None,
-                'y': None,
-                'z': None, 
-            },
+            'linear_acceleration': {'x': None,'y': None,'z': None},
             'linear_acceleration_covariance': []
         }
         
         self.zed_depth_camera_info = {
             'header': {
                 'seq': None,
-                'stamp': {
-                    'secs': None,
-                    'nsecs': None
-                    },
-                'frame_id': None,
+                'stamp': {'secs': None,'nsecs': None},
+                'frame_id': None
             },
             'height': None,
             'width': None,
             'distortion_model': None,
-            'D': [],
-            'K': [],
-            'R': [],
-            'P': [],
+            'D': [],'K': [],'R': [],'P': [],
             'binning_x': None,
             'binning_y': None,
             'roi': {
@@ -346,19 +242,12 @@ class MultiTopicSubscriber:
         self.zed_left_camera_info = {
             'header': {
                 'seq': None,
-                'stamp': {
-                    'secs': None,
-                    'nsecs': None
-                    },
-                'frame_id': None,
+                'stamp': {'secs': None,'nsecs': None},
+                'frame_id': None
             },
             'height': None,
             'width': None,
-            'distortion_model': None,
-            'D': [],
-            'K': [],
-            'R': [],
-            'P': [],
+            'distortion_model': None,'D': [],'K': [],'R': [],'P': [],
             'binning_x': None,
             'binning_y': None,
             'roi': {
@@ -366,9 +255,10 @@ class MultiTopicSubscriber:
                 'y_offset': None,
                 'height': None,
                 'width': None,
-                'do_rectify': None,
+                'do_rectify': None
             }
         }
+        
 if __name__ == "__main__":
     subscriber = MultiTopicSubscriber()
     subscriber.spin()

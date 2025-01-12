@@ -1,14 +1,16 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(vehicle_diag)
+project(vehicle_diagnostics_tool)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  rospy_std_msgs
+  roscpp
+  std_msgs  
+  #rospy_std_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -45,11 +47,12 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  NodeStatus.msg
+  # Message1.msg
+  # Message2.msg
+)
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -66,10 +69,12 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   rospy_std_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  #rospy_std_msgs
+  std_msgs
+  geometry_msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -105,8 +110,8 @@ catkin_package(
 #  LIBRARIES vehicle_diag
 #  CATKIN_DEPENDS rospy_std_msgs
 #  DEPENDS system_lib
+  CATKIN_DEPENDS roscpp std_msgs geometry_msgs
 )
-
 ###########
 ## Build ##
 ###########
@@ -114,10 +119,14 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  #include
   ${catkin_INCLUDE_DIRS}
+  /usr/local/cuda-12.6/targets/x86_64-linux/include  # NVML header path
 )
 
+link_directories(
+  /usr/local/cuda-12.6/targets/x86_64-linux/lib/stubs  # NVML library path
+)
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
 #   src/${PROJECT_NAME}/vehicle_diag.cpp
@@ -131,7 +140,9 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/vehicle_diag_node.cpp)
+#add_executable(${PROJECT_NAME}_node src/vehicle_diag_node.cpp)
+add_executable(sys_status_node scripts/listener/sys_status.cpp)
+add_executable(random_float_pub_node scripts/utils/random_float_pub.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -147,6 +158,9 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+## Link NVML library and catkin libraries
+target_link_libraries(sys_status_node ${catkin_LIBRARIES} nvidia-ml)
+target_link_libraries(random_float_pub ${catkin_LIBRARIES})
 
 #############
 ## Install ##

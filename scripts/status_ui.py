@@ -3,7 +3,7 @@
 import rospy
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QFrame, QPushButton, QHBoxLayout
 from PySide6.QtCore import Qt, QTimer
-from std_msgs.msg import Float32, Int8MultiArray
+from std_msgs.msg import Float32, Int8MultiArray, Float32MultiArray
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 
 
@@ -20,10 +20,9 @@ class SystemMonitorGUI(QWidget):
         self.timer.start(100)
         
     def init_components(self):
-        self.cpu_usage_sub = Subscriber('/sys_status/cpu_usage', Float32)
-        self.cpu_freq_sub = Subscriber('/sys_status/cpu_freq', Float32)
-        self.gpu_usage_sub = Subscriber('/sys_status/gpu_usage', Float32)
-        self.memory_sub = Subscriber('/sys_status/memory', Float32)
+        
+        '''sys info components'''
+        self.sys_status_sub = Subscriber('/get_sys_status', Float32MultiArray)
 
         self.cpu_usage_val = 'N/A'
         self.cpu_freq_val = 'N/A'
@@ -35,14 +34,28 @@ class SystemMonitorGUI(QWidget):
         self.gpu_usage_label = QLabel(self.gpu_usage_val)
         self.memory_percent_label = QLabel(self.memory_percent_val)
 
-        self.status_list_sub = Subscriber('/sensor_status/sensor_status_bool', Int8MultiArray)
-        self.lidar_status = QFrame()
-        self.gps_status = QFrame()
-        self.camera_status = QFrame()
-        self.lidar_label = QLabel("Lidar")
-        self.gps_label = QLabel("GPS")
-        self.camera_label = QLabel("Camera")
+        '''node componets'''
+        self.node_connected_status_sub = Subscriber('/node_connecter', Int8MultiArray)
+        
+        self.lidar_status_frame = QFrame()
+        self.gps_fix_frame = QFrame()
+        self.gps_fix_velocity_frame = QFrame()
+        self.imu_frame = QFrame()
+        
+        self.zed_depth_info_frame = QFrame()
+        self.zed_left_info_frame = QFrame()
+        self.cam_info_frame = QFrame()
 
+        
+        self.lidar_label = QLabel('Lider')
+        self.gps_fix_label = QLabel("GPS Fix")
+        self.gps_fix_velocity_label = QLabel('GPS Fix Velocity')
+        self.imu_label = QLabel('IMU')
+        
+        self.zed_camera_label = QLabel("ZED Camera")
+        self.camera_label = QLabel("Camera")
+        
+        '''buttons'''
         self.button_1 = QPushButton("Start")
         self.button_2 = QPushButton("Stop")
         self.button_3 = QPushButton("Reset")
@@ -89,13 +102,19 @@ class SystemMonitorGUI(QWidget):
         
         '''sensor grid'''
         sensor_layout = QGridLayout()
-        sensor_layout.addWidget(self.lidar_status, 0, 0)
-        sensor_layout.addWidget(self.gps_status, 1, 0)
-        sensor_layout.addWidget(self.camera_status, 2, 0)
+        sensor_layout.addWidget(self.lidar_status_frame, 0, 0)
+        sensor_layout.addWidget(self.gps_fix_frame, 1, 0)
+        sensor_layout.addWidget(self.gps_fix_velocity_frame, 2, 0)
+        sensor_layout.addWidget(self.imu_frame, 3, 0)
+        sensor_layout.addWidget(self.zed_depth_info_frame, 4, 0)
+        sensor_layout.addWidget(self.cam_info_frame, 5, 0)
         
         sensor_layout.addWidget(self.lidar_label, 0, 1)
-        sensor_layout.addWidget(self.gps_label, 1, 1)
-        sensor_layout.addWidget(self.camera_label, 2, 1)
+        sensor_layout.addWidget(self.gps_fix_label, 2, 1)
+        sensor_layout.addWidget(self.gps_fix_velocity_label, 2, 1)
+        sensor_layout.addWidget(self.imu_label, 2, 1)
+        sensor_layout.addWidget(self.zed_depth_info_label, 4, 1)
+        sensor_layout.addWidget(self.cam_info_frame, 5, 1)
 
         sensor_container = QFrame()
         sensor_container.setLayout(sensor_layout)
@@ -123,7 +142,7 @@ class SystemMonitorGUI(QWidget):
             font.setBold(True)
             label.setFont(font)
         
-        labels = [self.lidar_label, self.gps_label, self.camera_label]
+        labels = [self.lidar_label, self.gps_fix_label, self.camera_label]
         
         for label in labels:
             font =label.font()
@@ -131,7 +150,7 @@ class SystemMonitorGUI(QWidget):
             font.setBold(True)
             label.setFont(font)
             
-        sensor_box = [self.lidar_status, self.gps_status, self.camera_status]
+        sensor_box = [self.lidar_status_frame, self.gps_fix_frame, self.gps_fix_velocity_frame, self.imu_frame, self.zed_depth_info_frame, self.cam_info_frame]
         
         for box in sensor_box:
             box.setFrameShape(QFrame.Box)
@@ -142,31 +161,31 @@ class SystemMonitorGUI(QWidget):
         self.button_2.setFixedSize(100,40)
         self.button_3.setFixedSize(100,40)
         
-    def sys_status_callback(self, cpu_usage, cpu_freq, gpu_usage, memory, status_list):
+    def sys_status_callback(self, sys_status_sub, node_connected_status_sub):
         #update status values
-        self.cpu_usage_val = f"{cpu_usage.data:.2f}%"
-        self.cpu_freq_val = f"{cpu_freq.data:.2f} GHz"
-        self.gpu_usage_val = f"{gpu_usage.data:.2f}%"
-        self.memory_percent_val = f"{memory.data:.2f}%"
+        self.cpu_usage_val = f"{sys_status_sub.data[0]:.2f}%"
+        self.cpu_freq_val = f"{sys_status_sub.data[1]:.2f} GHz"
+        self.gpu_usage_val = f"{sys_status_sub.data[2]:.2f}%"
+        self.memory_percent_val = f"{sys_status_sub.data[3]:.2f}%"
 
-        if bool(status_list.data[0]):
+        if bool(node_connected_status_sub.data[0]):
             lider_c = 'background-color: green;'
         else:
             lider_c = 'background-color: red;'
         
-        if bool(status_list.data[1]):
+        if bool(node_connected_status_sub.data[1]):
             gps_c = 'background-color: green;'
         else:
             gps_c = 'background-color: red;'
             
-        if bool(status_list.data[2]):
+        if bool(node_connected_status_sub.data[2]):
             camera_c = 'background-color: green;'
         else:
             camera_c = 'background-color: red;'
             
-        self.lidar_status.setStyleSheet(lider_c)
-        self.gps_status.setStyleSheet(gps_c)
-        self.camera_status.setStyleSheet(camera_c)
+        self.lidar_status_frame.setStyleSheet(lider_c)
+        self.gps_fix_frame.setStyleSheet(gps_c)
+        self.cam_info_frame.setStyleSheet(camera_c)
         
     def update_ui(self):
         """UI 업데이트 로직"""
@@ -186,7 +205,7 @@ class SystemMonitorGUI(QWidget):
 
     def init_msgs_sync(self):
         ats = ApproximateTimeSynchronizer(
-            [self.cpu_usage_sub, self.cpu_freq_sub, self.gpu_usage_sub, self.memory_sub, self.status_list_sub],
+            [self.sys_status_sub, self.node_connected_status_sub],
             queue_size=20,
             slop=1,
             allow_headerless=True
