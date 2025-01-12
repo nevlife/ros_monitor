@@ -1,30 +1,42 @@
-def process_camera_image(msg, window_name):
-    """
-    공통적인 카메라 이미지 처리 로직을 별도의 함수로 분리
-    """
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+import rospy
+import random
+from std_msgs.msg import Float32MultiArray
+
+def random_node_connecter():
+    # Initialize the ROS node
+    rospy.init_node('random_node_connecter', anonymous=True)
+
+    # Create a publisher for /node_connecter topic
+    pub = rospy.Publisher('/node_connecter', Float32MultiArray, queue_size=10)
+
+    # Set publishing rate
+    rate = rospy.Rate(10)
+
+    while not rospy.is_shutdown():
+        # Generate exactly 6 random float values for node statuses
+        node_status = Float32MultiArray()
+        node_status.data = [
+            random.uniform(0.0, 1.0),
+            random.uniform(0.0, 1.0),
+            random.uniform(0.0, 1.0),
+            random.uniform(0.0, 1.0),  # GPS Fix
+            random.uniform(0.0, 1.0),  # GPS Velocity
+            random.uniform(0.0, 1.0),  # IMU
+            random.uniform(0.0, 1.0),  # ZED Camera
+            random.uniform(0.0, 1.0)   # Camera
+        ]
+
+        # Log and publish the message
+        rospy.loginfo(f"Publishing to /node_connecter: {node_status.data}")
+        pub.publish(node_status)
+
+        # Sleep to maintain the publishing rate
+        rate.sleep()
+
+if __name__ == '__main__':
     try:
-        # 메시지 데이터를 OpenCV 이미지로 변환
-        np_arr = np.frombuffer(msg.data, np.uint8)
-        camera_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-        # 유효성 검사 및 이미지 출력
-        if camera_image is not None and camera_image.shape[0] > 0 and camera_image.shape[1] > 0:
-            cv2.imshow(window_name, camera_image)
-            cv2.waitKey(1)
-        else:
-            rospy.logwarn(f"Received invalid camera image in {window_name}")
-        
-        return camera_image
-    except Exception as e:
-        rospy.logerr(f"Error processing camera image in {window_name}: {e}")
-        return None
-
-# 콜백 함수들
-def callback_usb_camera(self, msg):
-    self.usb_camera = process_camera_image(msg, "USB Camera")
-
-def callback_zed_node_left_image_rect_color(self, msg):
-    self.zed_left_camera_img = process_camera_image(msg, "ZED Left Camera")
-
-def callback_zed_node_depth_depth_registered(self, msg):
-    self.zed_depth_camera_img = process_camera_image(msg, "ZED Depth Camera")
+        random_node_connecter()
+    except rospy.ROSInterruptException:
+        pass

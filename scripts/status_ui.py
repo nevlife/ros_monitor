@@ -12,31 +12,31 @@ class SystemMonitorGUI(QWidget):
         super().__init__()
         self.init_components()
         self.init_layout()
-        self.init_style()
         self.init_msgs_sync()
         
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_ui)
-        self.timer.start(100)
-        
+        self.node_status_received = {key: False for key in self.sensors.keys()}
+
     def init_components(self):
         
         '''sys info components'''
-        self.sys_status_sub = Subscriber('/get_sys_status', Float32MultiArray)
-
-        self.cpu_usage_val = 'N/A'
-        self.cpu_freq_val = 'N/A'
-        self.gpu_usage_val = 'N/A'
-        self.memory_percent_val = 'N/A'
-
-        self.cpu_usage_label = QLabel(self.cpu_usage_val)
-        self.cpu_freq_label = QLabel(self.cpu_freq_val)
-        self.gpu_usage_label = QLabel(self.gpu_usage_val)
-        self.memory_percent_label = QLabel(self.memory_percent_val)
-
-        '''node componets'''
-        self.node_connected_status_sub = Subscriber('/node_connecter', Int8MultiArray)
-        
+        self.sys_status_data = {
+            'CPU Usage' : 'N/A',
+            'CPU Freq' : 'N/A',
+            'GPU Usage' : 'N/A',
+            'Memory' : 'N/A',
+        }
+    
+        self.sys_status_labels = {}
+        for key in self.sys_status_data:
+            '''create QLabel to sys_status_data'''
+            label = QLabel(f'{key}: {self.sys_status_data[key]}')
+            font = label.font()
+            font.setPointSize(15)
+            font.setBold(True)
+            label.setFont(font)
+            self.sys_status_labels[key] = label
+            
+        '''node componets'''        
         self.lidar_status_frame = QFrame()
         self.gps_fix_frame = QFrame()
         self.gps_fix_velocity_frame = QFrame()
@@ -46,14 +46,28 @@ class SystemMonitorGUI(QWidget):
         self.zed_left_info_frame = QFrame()
         self.cam_info_frame = QFrame()
 
+        def init_sensor_ui(name):
+            frame = QFrame()
+            frame.setFrameShape(QFrame.Box)
+            frame.setFixedSize(50, 50)
+            frame.setLineWidth(2)
+            
+            label = QLabel(name)
+            font = label.font()
+            font.setPointSize(15)
+            font.setBold(True)
+            label.setFont(font)
+            
+            return frame, label
         
-        self.lidar_label = QLabel('Lider')
-        self.gps_fix_label = QLabel("GPS Fix")
-        self.gps_fix_velocity_label = QLabel('GPS Fix Velocity')
-        self.imu_label = QLabel('IMU')
-        
-        self.zed_camera_label = QLabel("ZED Camera")
-        self.camera_label = QLabel("Camera")
+        self.sensors ={
+            'Lidar': init_sensor_ui('Lidar'),
+            'GPS Fix': init_sensor_ui('GPS Fix'),
+            'GPS Velocity': init_sensor_ui('GPS Velocity'),
+            'IMU': init_sensor_ui('IMU'),
+            'ZED Camera': init_sensor_ui('ZED Camera'),
+            'Camera': init_sensor_ui('Camera')
+        }
         
         '''buttons'''
         self.button_1 = QPushButton("Start")
@@ -62,7 +76,8 @@ class SystemMonitorGUI(QWidget):
         self.button_1.clicked.connect(self.start_clicked)
         self.button_2.clicked.connect(self.stop_clicked)
         self.button_3.clicked.connect(self.reset_clicked)
-
+    
+    
     def init_layout(self):
         """set layout, container"""
         main_layout = QVBoxLayout(self)
@@ -81,10 +96,9 @@ class SystemMonitorGUI(QWidget):
 
         '''sys grid'''
         sys_layout = QGridLayout()
-        sys_layout.addWidget(self.cpu_usage_label, 0, 1)
-        sys_layout.addWidget(self.cpu_freq_label, 1, 1)
-        sys_layout.addWidget(self.gpu_usage_label, 2, 1)
-        sys_layout.addWidget(self.memory_percent_label, 3, 1)
+        
+        for row, label in enumerate(self.sys_status_labels.values()):
+            sys_layout.addWidget(label, row, 0)
 
         sys_container = QFrame()
         sys_container.setLayout(sys_layout)
@@ -102,19 +116,10 @@ class SystemMonitorGUI(QWidget):
         
         '''sensor grid'''
         sensor_layout = QGridLayout()
-        sensor_layout.addWidget(self.lidar_status_frame, 0, 0)
-        sensor_layout.addWidget(self.gps_fix_frame, 1, 0)
-        sensor_layout.addWidget(self.gps_fix_velocity_frame, 2, 0)
-        sensor_layout.addWidget(self.imu_frame, 3, 0)
-        sensor_layout.addWidget(self.zed_depth_info_frame, 4, 0)
-        sensor_layout.addWidget(self.cam_info_frame, 5, 0)
         
-        sensor_layout.addWidget(self.lidar_label, 0, 1)
-        sensor_layout.addWidget(self.gps_fix_label, 2, 1)
-        sensor_layout.addWidget(self.gps_fix_velocity_label, 2, 1)
-        sensor_layout.addWidget(self.imu_label, 2, 1)
-        sensor_layout.addWidget(self.zed_depth_info_label, 4, 1)
-        sensor_layout.addWidget(self.cam_info_frame, 5, 1)
+        for row, (name, (frame, label)) in enumerate(self.sensors.items()):
+            sensor_layout.addWidget(frame, row, 0)
+            sensor_layout.addWidget(label, row, 1)
 
         sensor_container = QFrame()
         sensor_container.setLayout(sensor_layout)
@@ -122,9 +127,10 @@ class SystemMonitorGUI(QWidget):
         sensor_container.setLineWidth(2)
         
         main_grid_layout = QGridLayout()
+        #시작 행, 시작 열, 행 범위, 열 범위
         main_grid_layout.addWidget(sys_container, 0, 0, 1, 1)
-        main_grid_layout.addWidget(def_container, 0, 2, 4, 1)
-        main_grid_layout.addWidget(sensor_container, 0, 3, 2, 1)
+        main_grid_layout.addWidget(def_container, 0, 1, 5, 4)
+        main_grid_layout.addWidget(sensor_container, 1, 0, 2, 1)
         
         grid_container = QFrame()
         grid_container.setLayout(main_grid_layout)
@@ -132,67 +138,44 @@ class SystemMonitorGUI(QWidget):
         main_layout.addWidget(button_container)
         main_layout.addWidget(grid_container)
 
-    def init_style(self):
-        '''setting label, box style'''
-        labels = [self.cpu_usage_label, self.cpu_freq_label, self.gpu_usage_label, self.memory_percent_label]
-        
-        for label in labels:
-            font =label.font()
-            font.setPointSize(15)
-            font.setBold(True)
-            label.setFont(font)
-        
-        labels = [self.lidar_label, self.gps_fix_label, self.camera_label]
-        
-        for label in labels:
-            font =label.font()
-            font.setPointSize(15)
-            font.setBold(True)
-            label.setFont(font)
-            
-        sensor_box = [self.lidar_status_frame, self.gps_fix_frame, self.gps_fix_velocity_frame, self.imu_frame, self.zed_depth_info_frame, self.cam_info_frame]
-        
-        for box in sensor_box:
-            box.setFrameShape(QFrame.Box)
-            box.setFixedSize(50, 50)
-            box.setLineWidth(2)
-        
-        self.button_1.setFixedSize(100,40)
-        self.button_2.setFixedSize(100,40)
-        self.button_3.setFixedSize(100,40)
-        
     def sys_status_callback(self, sys_status_sub, node_connected_status_sub):
         #update status values
-        self.cpu_usage_val = f"{sys_status_sub.data[0]:.2f}%"
-        self.cpu_freq_val = f"{sys_status_sub.data[1]:.2f} GHz"
-        self.gpu_usage_val = f"{sys_status_sub.data[2]:.2f}%"
-        self.memory_percent_val = f"{sys_status_sub.data[3]:.2f}%"
+        print(node_connected_status_sub)
+        expeted_node_status_len = 8
+        data = list(node_connected_status_sub.data)
+        data = data[:expeted_node_status_len] + [0.0] * (expeted_node_status_len - len(data))
+        
+        self.sys_status_data['CPU Usage'] = f'{sys_status_sub.data[0]:.2f}%'
+        self.sys_status_data['CPU Freq'] = f'{sys_status_sub.data[1]:.2f} GHz'
+        self.sys_status_data['GPU Usage'] = f'{sys_status_sub.data[2]:.2f}%'
+        self.sys_status_data['Memory'] = f'{sys_status_sub.data[3]:.2f}%'
 
-        if bool(node_connected_status_sub.data[0]):
-            lider_c = 'background-color: green;'
-        else:
-            lider_c = 'background-color: red;'
-        
-        if bool(node_connected_status_sub.data[1]):
-            gps_c = 'background-color: green;'
-        else:
-            gps_c = 'background-color: red;'
+                
+        for key, val in self.sys_status_data.items():
+            self.sys_status_labels[key].setText(f'{key}: {val}')
             
-        if bool(node_connected_status_sub.data[2]):
-            camera_c = 'background-color: green;'
-        else:
-            camera_c = 'background-color: red;'
-            
-        self.lidar_status_frame.setStyleSheet(lider_c)
-        self.gps_fix_frame.setStyleSheet(gps_c)
-        self.cam_info_frame.setStyleSheet(camera_c)
+        node_status = [
+            (self.sensors["GPS Fix"][0], data[2]),
+            (self.sensors["GPS Velocity"][0], data[3]),
+            (self.sensors["IMU"][0], data[4]),
+            (self.sensors["ZED Camera"][0], data[5]),
+            (self.sensors["Camera"][0], data[6]),
+            (self.sensors["Lidar"][0], data[7])
+        ]
         
+        for frame, status in node_status:
+            if status:
+                color = 'green'
+            else:
+                color = 'red'
+            frame.setStyleSheet(f'background-color: {color};')
+
+        for key in self.sensors.keys():
+            self.node_status_received[key] = True
+
     def update_ui(self):
-        """UI 업데이트 로직"""
-        self.cpu_usage_label.setText(f"CPU: {self.cpu_usage_val}")
-        self.cpu_freq_label.setText(f"CPU Frequency: {self.cpu_freq_val}")
-        self.gpu_usage_label.setText(f"GPU: {self.gpu_usage_val}")
-        self.memory_percent_label.setText(f"Memory: {self.memory_percent_val}")
+        """ui update"""
+        return
 
     def start_clicked(self):
         print("Start clicked")
@@ -204,6 +187,9 @@ class SystemMonitorGUI(QWidget):
         print("Reset clicked")
 
     def init_msgs_sync(self):
+        self.sys_status_sub = Subscriber('/get_sys_status', Float32MultiArray)
+        self.node_connected_status_sub = Subscriber('/node_connecter', Float32MultiArray)
+        
         ats = ApproximateTimeSynchronizer(
             [self.sys_status_sub, self.node_connected_status_sub],
             queue_size=20,

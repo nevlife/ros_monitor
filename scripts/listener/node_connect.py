@@ -13,8 +13,8 @@ class MultiTopicSubscriber:
 
         rospy.init_node("node_connecter", anonymous=True)
 
-        self.status_pub = rospy.Publisher('/node_connecter/status_pub', Bool, queu_size=10) 
-        self.data_pub = rospy.Publisher('/node_connecter/node_data', Float32MultiArray, queu_size=10)
+        self.status_pub = rospy.Publisher('/node_connecter/status_pub', Bool, queue_size=10) 
+        self.data_pub = rospy.Publisher('/node_connecter/node_data', Float32MultiArray, queue_size=10)
         
         
         self.data_init()
