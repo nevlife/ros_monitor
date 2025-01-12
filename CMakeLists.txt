@@ -9,8 +9,10 @@ add_compile_options(-std=c++11)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
-  std_msgs  
+  std_msgs
   #rospy_std_msgs
+  geometry_msgs
+  message_generation
 )
 
 ## System dependencies are found with CMake's conventions
@@ -110,7 +112,7 @@ catkin_package(
 #  LIBRARIES vehicle_diag
 #  CATKIN_DEPENDS rospy_std_msgs
 #  DEPENDS system_lib
-  CATKIN_DEPENDS roscpp std_msgs geometry_msgs
+  CATKIN_DEPENDS roscpp std_msgs geometry_msgs message_runtime
 )
 ###########
 ## Build ##
@@ -142,6 +144,8 @@ link_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 #add_executable(${PROJECT_NAME}_node src/vehicle_diag_node.cpp)
 add_executable(sys_status_node scripts/listener/sys_status.cpp)
+add_executable(sys_status_def_node scripts/listener/sys_status_def.cpp)
+
 add_executable(random_float_pub_node scripts/utils/random_float_pub.cpp)
 
 ## Rename C++ executable without prefix
@@ -160,7 +164,8 @@ add_executable(random_float_pub_node scripts/utils/random_float_pub.cpp)
 # )
 ## Link NVML library and catkin libraries
 target_link_libraries(sys_status_node ${catkin_LIBRARIES} nvidia-ml)
-target_link_libraries(random_float_pub ${catkin_LIBRARIES})
+target_link_libraries(sys_status_def_node ${catkin_LIBRARIES} nvidia-ml)
+target_link_libraries(random_float_pub_node ${catkin_LIBRARIES})
 
 #############
 ## Install ##
