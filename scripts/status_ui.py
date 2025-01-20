@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QTimer
 from std_msgs.msg import Float32MultiArray
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 
-from dynamic_node_connect import MetricsManager
+from node_hz_bw import MetricsManager
 
 
 class SystemMonitorGUI(QWidget):

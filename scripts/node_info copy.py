@@ -4,6 +4,7 @@ import rospy
 import rosgraph
 import time
 import os
+import psutil  # For system metrics
 from collections import deque
 from threading import Lock
 
@@ -116,6 +117,23 @@ class MetricsManager:
         for topic in filtered_topic_list:
             self.monitors[topic] = ROSTopicMetrics(topic)
 
+    def get_node_system_metrics(self):
+        """Retrieve system metrics (CPU, RAM) for the current node."""
+        try:
+            process = psutil.Process(os.getpid())
+            cpu_usage = process.cpu_percent(interval=0.1) / psutil.cpu_count()
+            memory_usage = process.memory_info().rss / (1024 * 1024)  # Convert to MB
+            return {
+                "cpu": f"{cpu_usage:.2f}%",
+                "memory": f"{memory_usage:.2f} MB"
+            }
+        except Exception as e:
+            rospy.logerr(f"Failed to get system metrics: {e}")
+            return {
+                "cpu": "N/A",
+                "memory": "N/A"
+            }
+
     def get_metrics(self):
         results = {}
         for topic, monitor in self.monitors.items():
@@ -136,6 +154,11 @@ class MetricsManager:
                 'hz': hz_val,
                 'bandwidth': bandwidth_val
             }
+
+        # Add system metrics for the current node
+        system_metrics = self.get_node_system_metrics()
+        results["node_metrics"] = system_metrics
+
         return results
 
 if __name__ == '__main__':
@@ -145,7 +168,10 @@ if __name__ == '__main__':
         while not rospy.is_shutdown():
             metrics = manager.get_metrics()
             for topic, data in metrics.items():
-                rospy.loginfo(f"{topic}: Hz = {data['hz']}, Bandwidth = {data['bandwidth']} bytes/sec")
+                if topic == "node_metrics":
+                    rospy.loginfo(f"Node CPU = {data['cpu']}, Memory = {data['memory']}")
+                else:
+                    rospy.loginfo(f"{topic}: Hz = {data['hz']}, Bandwidth = {data['bandwidth']} bytes/sec")
             rate.sleep()
     except rospy.ROSInterruptException:
         pass
