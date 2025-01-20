@@ -3,6 +3,7 @@
 import rospy
 import rosgraph
 import time
+import os
 from collections import deque
 from threading import Lock
 
@@ -21,24 +22,23 @@ class ROSTopicMetrics:
         self.subscriber = rospy.Subscriber(topic, rospy.AnyMsg, self.callback)
 
     def callback(self, msg):
-        '''Hz, 대역폭 계산을 위한 데이터'''
-        now = time.monotonic()
+        '''data for hz and bandwidth calculations'''
+        now = time.perf_counter()
 
-        #Hz
+        # hz
         with self.hz_lock:
             self.times.append(now)
 
-        #대역폭
+        # bandwidth
         with self.bandwidth_lock:
             if self.start_time is None:
                 self.start_time = now
             self.end_time = now
 
             if hasattr(msg, '_buff'):
-                #_buff 속성이 있을때
                 msg_size = len(msg._buff)
             else:
-                #_buff 속성이 없으때 메시지를 문자열로 변환한 후 길이 계산
+                # _buff 속성이 없을 때 메시지를 문자열로 변환한 후 길이 계산
                 msg_size = len(str(msg))
 
             self.bytes_received += msg_size
@@ -50,15 +50,15 @@ class ROSTopicMetrics:
                 return None
             deltas = []
             timestamps = list(self.times)
-            
+
             for i in range(len(timestamps) - 1):
                 t1 = timestamps[i]
-                t2 = timestamps[i+1]
+                t2 = timestamps[i + 1]
                 delta = t2 - t1
                 deltas.append(delta)
-            
+
             if deltas:
-                hz = 1.0 / (sum(deltas)/len(deltas))
+                hz = 1.0 / (sum(deltas) / len(deltas))
                 return hz
             else:
                 return None
@@ -66,15 +66,15 @@ class ROSTopicMetrics:
     def get_bandwidth(self):
         """return bandwidth"""
         with self.bandwidth_lock:
-            
+
             if self.start_time is None or self.end_time is None:
                 return None
-            
+
             duration = self.end_time - self.start_time
-            
+
             if duration == 0:
                 return None
-            
+
             return self.bytes_received / duration
 
     def reset(self):
@@ -87,30 +87,33 @@ class ROSTopicMetrics:
 
 
 class MetricsManager:
-    def __init__(self):
+    def __init__(self, yaml_file=None):
+        if yaml_file is None:
+            base_path = os.path.dirname(os.path.abspath(__file__))  # 현재 파일의 디렉터리 경로
+            yaml_file = os.path.join(base_path, "../cfg/topic_lst.yaml")  # YAML 파일 절대 경로
         self.monitors = {}
+        self.yaml_file = yaml_file
         self.initialize_monitors()
 
     def initialize_monitors(self):
+        # YAML 파일에서 토픽 리스트 읽기
+        try:
+            with open(self.yaml_file, 'r') as file:
+                topic_list = file.read().splitlines()
+        except Exception as e:
+            rospy.logerr(f"Failed to read YAML file: {e}")
+            topic_list = []
+
+        # ROS 마스터에서 퍼블리시된 토픽 가져오기
         master = rosgraph.Master('/rostopic')
         published_topics = master.getPublishedTopics('')
-        
-        topic_list = []
-        for topic in published_topics:
-            topic_list.append(topic[0])
 
-        ignore_topics = ['/clock', '/rosout', '/rosout_agg']
-        
-        filtered_topic_list = []
-        for topic in topic_list:
-            if topic not in ignore_topics:
-                filtered_topic_list.append(topic)
-                
-        topic_list = filtered_topic_list
+        # 지정된 토픽만 필터링
+        filtered_topic_list = [topic for topic in topic_list if topic in [t[0] for t in published_topics]]
 
-        rospy.loginfo(f'Init monitors for {len(topic_list)} topics...')
+        rospy.loginfo(f'Init monitors for {len(filtered_topic_list)} topics...')
 
-        for topic in topic_list:
+        for topic in filtered_topic_list:
             self.monitors[topic] = ROSTopicMetrics(topic)
 
     def get_metrics(self):
@@ -118,19 +121,31 @@ class MetricsManager:
         for topic, monitor in self.monitors.items():
             hz = monitor.get_hz()
             bandwidth = monitor.get_bandwidth()
-            
+
             if hz is not None:
                 hz_val = hz
             else:
                 hz_val = 'N/A'
-            
+
             if bandwidth is not None:
                 bandwidth_val = bandwidth
             else:
                 bandwidth_val = 'N/A'
-            
+
             results[topic] = {
-                'hz':hz_val,
-                'bandwidth':bandwidth_val
+                'hz': hz_val,
+                'bandwidth': bandwidth_val
             }
         return results
+
+if __name__ == '__main__':
+    try:
+        manager = MetricsManager()
+        rate = rospy.Rate(1)  # 1 Hz
+        while not rospy.is_shutdown():
+            metrics = manager.get_metrics()
+            for topic, data in metrics.items():
+                rospy.loginfo(f"{topic}: Hz = {data['hz']}, Bandwidth = {data['bandwidth']} bytes/sec")
+            rate.sleep()
+    except rospy.ROSInterruptException:
+        pass
