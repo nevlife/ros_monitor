@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import rospy
 import rosgraph
+import rosnode
 import time
 import os
 import psutil  # For system metrics
@@ -45,7 +46,8 @@ class ROSTopicMetrics:
             self.bytes_received += msg_size
 
     def get_hz(self):
-        """return Hz"""
+        '''return hz'''
+        
         with self.hz_lock:
             if len(self.times) < 2:
                 return None
@@ -77,15 +79,15 @@ class ROSTopicMetrics:
                 return None
 
             return self.bytes_received / duration
-
+            
     def reset(self):
-        """init data"""
+        '''init data'''
         with self.hz_lock, self.bandwidth_lock:
             self.times.clear()
             self.bytes_received = 0
             self.start_time = None
             self.end_time = None
-
+    
 
 class MetricsManager:
     def __init__(self, yaml_file=None):
@@ -94,10 +96,11 @@ class MetricsManager:
             yaml_file = os.path.join(base_path, "../cfg/topic_lst.yaml")  # YAML 파일 절대 경로
         self.monitors = {}
         self.yaml_file = yaml_file
+        self.topic_to_node_map = {}
         self.initialize_monitors()
-
+        
     def initialize_monitors(self):
-        # YAML 파일에서 토픽 리스트 읽기
+        #read yaml file
         try:
             with open(self.yaml_file, 'r') as file:
                 topic_list = file.read().splitlines()
@@ -108,70 +111,42 @@ class MetricsManager:
         # ROS 마스터에서 퍼블리시된 토픽 가져오기
         master = rosgraph.Master('/rostopic')
         published_topics = master.getPublishedTopics('')
-
-        # 지정된 토픽만 필터링
-        filtered_topic_list = [topic for topic in topic_list if topic in [t[0] for t in published_topics]]
-
+        
+        topic_names = []
+        filtered_topic_list = []
+        
+        for t in published_topics:
+            topic_names.append(t[0])
+            
+        for topic in topic_list:
+            if topic in topic_names:
+                filtered_topic_list.append(topic)
+        
+        
         rospy.loginfo(f'Init monitors for {len(filtered_topic_list)} topics...')
 
         for topic in filtered_topic_list:
             self.monitors[topic] = ROSTopicMetrics(topic)
-
-    def get_node_system_metrics(self):
-        """Retrieve system metrics (CPU, RAM) for the current node."""
-        try:
-            process = psutil.Process(os.getpid())
-            cpu_usage = process.cpu_percent(interval=0.1) / psutil.cpu_count()
-            memory_usage = process.memory_info().rss / (1024 * 1024)  # Convert to MB
-            return {
-                "cpu": f"{cpu_usage:.2f}%",
-                "memory": f"{memory_usage:.2f} MB"
-            }
-        except Exception as e:
-            rospy.logerr(f"Failed to get system metrics: {e}")
-            return {
-                "cpu": "N/A",
-                "memory": "N/A"
-            }
 
     def get_metrics(self):
         results = {}
         for topic, monitor in self.monitors.items():
             hz = monitor.get_hz()
             bandwidth = monitor.get_bandwidth()
-
+            
             if hz is not None:
-                hz_val = hz
+                hz_val = f'{hz:.2f}'
             else:
                 hz_val = 'N/A'
 
             if bandwidth is not None:
-                bandwidth_val = bandwidth
+                bandwidth_val = f'{bandwidth:.2f}'
             else:
                 bandwidth_val = 'N/A'
-
+                
             results[topic] = {
                 'hz': hz_val,
-                'bandwidth': bandwidth_val
+                'bw': bandwidth_val
             }
 
-        # Add system metrics for the current node
-        system_metrics = self.get_node_system_metrics()
-        results["node_metrics"] = system_metrics
-    
         return results
-
-if __name__ == '__main__':
-    try:
-        manager = MetricsManager()
-        rate = rospy.Rate(1)  # 1 Hz
-        while not rospy.is_shutdown():
-            metrics = manager.get_metrics()
-            for topic, data in metrics.items():
-                if topic == "node_metrics":
-                    rospy.loginfo(f"Node CPU = {data['cpu']}, Memory = {data['memory']}")
-                else:
-                    rospy.loginfo(f"{topic}: Hz = {data['hz']}, Bandwidth = {data['bandwidth']} bytes/sec")
-            rate.sleep()
-    except rospy.ROSInterruptException:
-        pass

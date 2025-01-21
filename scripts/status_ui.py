@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 import rospy
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QFrame, QPushButton, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QFrame, QPushButton, QHBoxLayout, QTableWidget, QTableWidgetItem
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 from std_msgs.msg import Float32MultiArray
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 
-from node_hz_bw import MetricsManager
+from get_topic_info import MetricsManager
 
 
 class SystemMonitorGUI(QWidget):
@@ -51,6 +52,18 @@ class SystemMonitorGUI(QWidget):
         self.button_2.clicked.connect(self.stop_clicked)
         self.button_3.clicked.connect(self.reset_clicked)
 
+        node_info_lst = ['node names', 'Hz', 'Bandwidth', 'CPU Usage', 'RAM Usage']
+        self.node_info_table = QTableWidget()
+        self.node_info_table.setColumnCount(len(node_info_lst))
+        
+        self.node_info_table.setHorizontalHeaderLabels(node_info_lst)
+        self.node_info_table.setColumnWidth(0, 500)  # Node Names 열
+        self.node_info_table.setColumnWidth(1, 100)  # Hz 열
+        self.node_info_table.setColumnWidth(2, 120)  # Bandwidth 열
+        self.node_info_table.setColumnWidth(3, 300)  # CPU Usage 열
+        self.node_info_table.setColumnWidth(4, 120)  # RAM Usage 열
+        #self.node_info_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        
     def init_layout(self):
         '''set layout'''
         main_layout = QVBoxLayout(self)
@@ -77,16 +90,18 @@ class SystemMonitorGUI(QWidget):
         sys_container.setLineWidth(2)
 
         '''node info layout'''
-        self.node_info_layout = QGridLayout()
-        self.node_info_container = QFrame()
-        self.node_info_container.setLayout(self.node_info_layout)
-        self.node_info_container.setFrameShape(QFrame.Box)
-        self.node_info_container.setLineWidth(2)
+        node_info_layout = QVBoxLayout()
+        node_info_layout.addWidget(self.node_info_table)
+        
+        node_info_container = QFrame()
+        node_info_container.setLayout(node_info_layout)
+        node_info_container.setFrameShape(QFrame.Box)
+        node_info_container.setLineWidth(2)
 
         '''main layout'''
         main_grid_layout = QGridLayout()
         main_grid_layout.addWidget(sys_container, 0, 0, 1, 1)
-        main_grid_layout.addWidget(self.node_info_container, 0, 1, 5, 4)
+        main_grid_layout.addWidget(node_info_container, 0, 1, 5, 4)
         
         grid_container = QFrame()
         grid_container.setLayout(main_grid_layout)
@@ -106,26 +121,27 @@ class SystemMonitorGUI(QWidget):
     def update_metrics_data(self):
         '''update node info'''
         metrics = self.metrics_manager.get_metrics()
+        #print(metrics)
+        
+        self.node_info_table.setRowCount(len(metrics))
+        
+        font = QFont()
+        font.setPointSize(14)
+        
         for row, (node, data) in enumerate(metrics.items()):
-            #init label
-            if node not in self.metrics_labels:
-                hz_label = QLabel(f'{node} Hz: {data["hz"]}hz')
-                bandwidth_label = QLabel(f'{node} Bandwidth: {data["bandwidth"]}')
-                print(hz_label)
-                
-                #add layout
-                self.node_info_layout.addWidget(hz_label, row, 0)
-                self.node_info_layout.addWidget(bandwidth_label, row, 1)
-
-                #save label
-                self.metrics_labels[node] = {
-                    'hz_label': hz_label,
-                    'bandwidth_label': bandwidth_label,
-                }
-
-            #label update
-            self.metrics_labels[node]['hz_label'].setText(f'{node} Hz: {data["hz"]}')
-            self.metrics_labels[node]['bandwidth_label'].setText(f'{node} Bandwidth: {data["bandwidth"]}')
+            #add layout
+            node_item = QTableWidgetItem(node)
+            node_item.setFont(font)
+            self.node_info_table.setItem(row, 0, node_item)
+            
+            hz_item = QTableWidgetItem(f'{data["hz"]}')
+            hz_item.setFont(font)
+            self.node_info_table.setItem(row, 1, hz_item)
+            
+            bw_item = QTableWidgetItem(f'{data["bw"]}')
+            bw_item.setFont(font)
+            self.node_info_table.setItem(row, 2, bw_item)
+            
 
     def start_clicked(self):
         rospy.loginfo('Start clicked')
@@ -139,6 +155,6 @@ class SystemMonitorGUI(QWidget):
         self.update_metrics_data()
         
     def init_msgs_sync(self):
-        self.sys_status_sub = Subscriber('/get_sys_status', Float32MultiArray)
+        self.sys_status_sub = Subscriber('/get_sys_status', Float32MultiArray) #total sys info
         ats = ApproximateTimeSynchronizer([self.sys_status_sub], queue_size=20, slop=1, allow_headerless=True)
         ats.registerCallback(self.sys_status_callback)
