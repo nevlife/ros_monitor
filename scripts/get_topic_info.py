@@ -90,12 +90,9 @@ class ROSTopicMetrics:
     
 
 class MetricsManager:
-    def __init__(self, yaml_file=None):
-        if yaml_file is None:
-            base_path = os.path.dirname(os.path.abspath(__file__))  # 현재 파일의 디렉터리 경로
-            yaml_file = os.path.join(base_path, "../cfg/topic_lst.yaml")  # YAML 파일 절대 경로
+    def __init__(self):
+        self.yaml_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../cfg/topic_lst.yaml')
         self.monitors = {}
-        self.yaml_file = yaml_file
         self.topic_to_node_map = {}
         self.initialize_monitors()
         

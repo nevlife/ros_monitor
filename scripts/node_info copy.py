@@ -1,137 +1,167 @@
-import rospy
-import rosgraph
-import time
+#!/usr/bin/env python3
+
+import functools
 import os
-import psutil  # For system metrics
-from collections import deque
-from threading import Lock
 import subprocess
 
+import rosnode
+import rospy
 
-class ROSTopicMetrics:
-    def __init__(self, topic, window_size=10):
-        self.topic = topic
-        self.hz_lock = Lock()
-        self.bandwidth_lock = Lock()
+import psutil
 
-        self.times = deque(maxlen=window_size)
-        self.bytes_received = 0
-        self.start_time = None
-        self.end_time = None
+try:
+  from xmlrpc.client import ServerProxy
+except ImportError:
+  from xmlrpclib import ServerProxy
 
-        self.subscriber = rospy.Subscriber(topic, rospy.AnyMsg, self.callback)
-
-    def callback(self, msg):
-        now = time.perf_counter()
-
-        # hz
-        with self.hz_lock:
-            self.times.append(now)
-
-        # bandwidth
-        with self.bandwidth_lock:
-            if self.start_time is None:
-                self.start_time = now
-            self.end_time = now
-
-            if hasattr(msg, '_buff'):
-                msg_size = len(msg._buff)
-            else:
-                msg_size = len(str(msg))
-
-            self.bytes_received += msg_size
-
-    def get_hz(self):
-        with self.hz_lock:
-            if len(self.times) < 2:
-                return None
-            deltas = [self.times[i + 1] - self.times[i] for i in range(len(self.times) - 1)]
-            if deltas:
-                return 1.0 / (sum(deltas) / len(deltas))
-            return None
-
-    def get_bandwidth(self):
-        with self.bandwidth_lock:
-            if self.start_time is None or self.end_time is None:
-                return None
-            duration = self.end_time - self.start_time
-            if duration == 0:
-                return None
-            return self.bytes_received / duration
+from std_msgs.msg import Float32, UInt64
 
 
-class MetricsManager:
-    def __init__(self, yaml_file=None):
-        if yaml_file is None:
-            base_path = os.path.dirname(os.path.abspath(__file__))
-            yaml_file = os.path.join(base_path, "../cfg/topic_lst.yaml")
-        self.monitors = {}
-        self.yaml_file = yaml_file
-        self.node_pids = {}
-        self.initialize_monitors()
+def ns_join(*names):
+  return functools.reduce(rospy.names.ns_join, names, "")
 
-    def initialize_monitors(self):
+class Node:
+  def __init__(self, name, pid):
+    self.name = name
+    self.proc = psutil.Process(pid)
+    self.cpu_publisher = rospy.Publisher(ns_join("~", name[1:], "cpu"), Float32, queue_size=20)
+    self.mem_publisher = rospy.Publisher(ns_join("~", name[1:], "mem"), UInt64, queue_size=20)
+
+  def publish(self):
+    self.cpu = self.proc.cpu_percent()
+    self.mem = self.proc.memory_info().rss
+    self.cpu_publisher.publish(Float32(self.cpu))
+    self.mem_publisher.publish(UInt64(self.mem))
+
+  def get_values(self):
+    return self.cpu, self.mem
+
+  def alive(self):
+    return self.proc.is_running()
+
+class CSVWriter:
+  def __init__(self, filename, source_list):
+    self.csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    rospy.loginfo("[cpu monitor] saving to file: %s" % self.csv_path)
+    self.file = open(self.csv_path, "w")
+    self.header_init = False
+    if len(source_list) > 0:
+      self.init_header(source_list)
+
+  def init_header(self, source_list):
+    self.source_list = source_list
+    self.file.write('time')
+    for source in self.source_list:
+      self.file.write(', %s cpu, %s mem' % (source, source))
+    self.file.write('\n')
+    rospy.loginfo("[cpu monitor] monitoring nodes: %s" % self.source_list)
+    self.header_init = True
+
+  def update(self, node_map):
+    new_csv_line = str(rospy.get_rostime())
+    for source in self.source_list:
+      if source in node_map and node_map[source].alive():
+        cpu, mem = node_map[source].get_values()
+        new_csv_line += ', %f, %f' % (cpu, mem)
+      else:
+        new_csv_line += ', , '
+    new_csv_line += "\n"
+    self.file.write(new_csv_line)
+
+  def close(self):
+    self.file.close()
+
+if __name__ == "__main__":
+  rospy.init_node("cpu_monitor")
+  master = rospy.get_master()
+
+  poll_period = rospy.get_param('~poll_period', 1.0)
+  save_to_csv = rospy.get_param('~save_to_csv', False)
+  csv_file_name = rospy.get_param('~csv_file', 'cpu_monitor.csv')
+  source_list = rospy.get_param('~source_list', [])
+
+  if save_to_csv:
+    csv_writer = CSVWriter(csv_file_name, source_list)
+    node_start_time = rospy.get_rostime()
+    rospy.on_shutdown(csv_writer.close)
+
+  this_ip = os.environ.get("ROS_IP")
+
+  node_map = {}
+  ignored_nodes = set()
+
+  cpu_publish = rospy.Publisher("~total_cpu", Float32, queue_size=20)
+
+  mem_topics = ["available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab"]
+
+  vm = psutil.virtual_memory()
+  mem_topics = [topic for topic in mem_topics if topic in dir(vm)]
+
+  mem_publishers = []
+  for mem_topic in mem_topics:
+    mem_publishers.append(rospy.Publisher("~total_%s_mem" % mem_topic,
+                                          UInt64, queue_size=20))
+
+  while not rospy.is_shutdown():
+    for node in rosnode.get_node_names():
+      if node in node_map or node in ignored_nodes:
+        continue
+
+      node_api = rosnode.get_api_uri(master, node, skip_cache=True)[2]
+      if not node_api:
+        rospy.logerr("[cpu monitor] failed to get api of node %s (%s)" % (node, node_api))
+        continue
+
+      ros_ip = node_api[7:] # strip http://
+      ros_ip = ros_ip.split(':')[0] # strip :<port>/
+      local_node = "localhost" in node_api or \
+                  "127.0.0.1" in node_api or \
+                  (this_ip is not None and this_ip == ros_ip) or \
+                  subprocess.check_output("hostname").decode('utf-8').strip() in node_api
+      if not local_node:
+        ignored_nodes.add(node)
+        rospy.loginfo("[cpu monitor] ignoring node %s with URI %s" % (node, node_api))
+        continue
+
+      try:
+        resp = ServerProxy(node_api).getPid('/NODEINFO')
+      except:
+        rospy.logerr("[cpu monitor] failed to get pid of node %s (api is %s)" % (node, node_api))
+      else:
         try:
-            with open(self.yaml_file, 'r') as file:
-                topic_list = file.read().splitlines()
-        except Exception as e:
-            rospy.logerr(f"Failed to read YAML file: {e}")
-            topic_list = []
+          pid = resp[2]
+        except:
+          rospy.logerr("[cpu monitor] failed to get pid for node %s from NODEINFO response: %s" % (node, resp))
+        else:
+          try:
+            node_map[node] = Node(name=node, pid=pid)
+          except psutil.NoSuchProcess:
+            rospy.logwarn("[cpu monitor] psutil can't see %s (pid = %d). Ignoring" % (node, pid))
+            ignored_nodes.add(node)
+          else:
+            rospy.loginfo("[cpu monitor] adding new node %s" % node)
 
-        master = rosgraph.Master('/rostopic')
-        published_topics = master.getPublishedTopics('')
+    for node_name, node in list(node_map.items()):
+      if node.alive():
+        node.publish()
+      else:
+        rospy.logwarn("[cpu monitor] lost node %s" % node_name)
+        del node_map[node_name]
 
-        filtered_topic_list = [topic for topic in topic_list if topic in [t[0] for t in published_topics]]
+    cpu_publish.publish(Float32(psutil.cpu_percent()))
 
-        rospy.loginfo(f'Init monitors for {len(filtered_topic_list)} topics...')
-        for topic in filtered_topic_list:
-            self.monitors[topic] = ROSTopicMetrics(topic)
+    vm = psutil.virtual_memory()
+    for mem_topic, mem_publisher in zip(mem_topics, mem_publishers):
+      mem_publisher.publish(UInt64(getattr(vm, mem_topic)))
 
-        # 노드별 PID 가져오기
-        self.node_pids = self.get_node_pids()
+    if save_to_csv:
+      if csv_writer.header_init:
+        csv_writer.update(node_map)
+      elif (rospy.get_rostime() - node_start_time) > rospy.Duration(5): # wait 5 seconds before setting header
+        rospy.loginfo("[cpu monitor] waited for 5 seconds before initializing csv header")
+        csv_writer.init_header(list(node_map.keys()))
 
-    def get_node_pids(self):
-        node_pids = {}
-        for node in rosgraph.Master('/rostopic').getSystemState()[0]:  # 모든 퍼블리셔 노드 가져오기
-            try:
-                node_info = subprocess.run(['rosnode', 'info', node], stdout=subprocess.PIPE, text=True)
-                for line in node_info.stdout.splitlines():
-                    if 'Pid:' in line:
-                        pid = int(line.split(':')[-1].strip())
-                        node_pids[node] = pid
-            except Exception as e:
-                rospy.logwarn(f"Failed to get PID for node {node}: {e}")
-        return node_pids
 
-    def get_metrics(self):
-        results = {}
-        for topic, monitor in self.monitors.items():
-            hz = monitor.get_hz()
-            bandwidth = monitor.get_bandwidth()
+    rospy.sleep(poll_period)
 
-            hz_val = f'{hz:.2f}' if hz is not None else 'N/A'
-            bandwidth_val = f'{bandwidth:.2f}' if bandwidth is not None else 'N/A'
-
-            # PID로 메모리 및 CPU 사용량 가져오기
-            node_name = next((n for n in self.node_pids if topic in n), None)
-            if node_name and node_name in self.node_pids:
-                pid = self.node_pids[node_name]
-                try:
-                    proc = psutil.Process(pid)
-                    cpu_usage = f'{proc.cpu_percent(interval=0.1) / psutil.cpu_count():.2f}'
-                    memory_usage = f'{proc.memory_info().rss / (1024*1024):.2f}'
-                except Exception as e:
-                    cpu_usage = 'N/A'
-                    memory_usage = 'N/A'
-            else:
-                cpu_usage = 'N/A'
-                memory_usage = 'N/A'
-
-            results[topic] = {
-                'hz': hz_val,
-                'bw': bandwidth_val,
-                'cpu_usage': cpu_usage,
-                'memory': memory_usage,
-            }
-
-        return results
+  rospy.loginfo("[cpu monitor] shutting down")
