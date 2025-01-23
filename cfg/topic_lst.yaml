@@ -1,8 +1,4 @@
 /current_motor_RPM
 /current_steer
-/imu/data
-/ublox_gps/fix
-/ublox_gps/fix_velocity
-/usb_cam/image_raw/compressed
 # /zed_node/depth/camera_info
 # /zed_node/left/camera_info
