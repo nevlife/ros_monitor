@@ -26,7 +26,7 @@ class Node:
     def __init__(self, name, pid):
         self.name = name
         self.proc = psutil.Process(pid)
-        self.resource_pub = rospy.Publisher(ns_join("~", name[1:], "resource"), String, queue_size=20)
+        self.resource_pub = rospy.Publisher(ns_join("~", name[1:], "resource"), String, queue_size=100)
 
     def publish(self):
         self.cpu = self.proc.cpu_percent()
@@ -34,9 +34,10 @@ class Node:
         
         usage = {
             'node': self.name,
-            'cpu': round(self.cpu, 6),
+            'cpu': self.cpu,
             'mem': self.mem
         }
+        
         print(usage)
         usage_json = json.dumps(usage)
         

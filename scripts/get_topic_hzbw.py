@@ -120,7 +120,7 @@ class MetricsManager:
 def main():
     try:
         rospy.init_node('topic_hzbw', anonymous=True)
-        topic_hzbw_pub = rospy.Publisher('/topic_hzbw', String, queue_size=10)
+        topic_hzbw_pub = rospy.Publisher('/topic_hzbw', String, queue_size=100)
 
         manager = MetricsManager()
         rate = rospy.Rate(1)  # Publish at 1 Hz
@@ -133,7 +133,7 @@ def main():
             for topic, metric in metrics.items():
                 hz = metric['hz']
                 bw = metric['bw']
-                rospy.loginfo(f"Topic: {topic}, Hz: {hz:.2f}, BW: {bw:.2f} bytes/sec")
+                print(f"Topic: {topic}, Hz: {hz:.2f}, BW: {bw:.2f} bytes/sec")
                 data.append({
                     'topic': topic,
                     'hz': hz,
@@ -142,6 +142,7 @@ def main():
 
             # Serialize the data to JSON and publish it
             json_data = json.dumps(data)
+            print(json_data)
             topic_hzbw_pub.publish(json_data)
 
             rate.sleep()
