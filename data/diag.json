@@ -1,0 +1,44 @@
+{
+    "total_resource": {
+        "cpu_usage": 1.5,
+        "cpu_freq": -1.0,
+        "cpu_temp": -1.0,
+        "mem_used": 1579.1875,
+        "mem_total": 7846.33203125,
+        "mem_percent": 23.799999237060547,
+        "gpu_id": 0.0,
+        "gpu_usage": 21.0,
+        "gpu_mem_used": 1150.67578125,
+        "gpu_mem_total": 6144.0,
+        "gpu_mem_percent": 18.72844696044922,
+        "gpu_temp": 34.0
+    },
+    "topic_hzbw": {
+        "/rosout": {
+            "hz": 2.2286343913140017,
+            "bw": 230.98135671039117
+        },
+        "/rosout_agg": {
+            "hz": 2.228457531681363,
+            "bw": 230.76559915223336
+        }
+    },
+    "node_resource": {
+        "/rosout": {
+            "cpu": 0.0,
+            "mem": 21098496
+        },
+        "/node_resource_monitor": {
+            "cpu": 0.0,
+            "mem": 88055808
+        },
+        "/topic_hzbw_49906_1737706284893": {
+            "cpu": 0.0,
+            "mem": 65331200
+        },
+        "/total_resouce_94865_1737716751571": {
+            "cpu": 1.0,
+            "mem": 81039360
+        }
+    }
+}

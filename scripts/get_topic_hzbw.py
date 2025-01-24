@@ -18,6 +18,7 @@ class ROSTopicMetrics:
 
         self.times = deque(maxlen=window_size)
         self.bytes_received = 0
+        
         self.start_time = None
         self.end_time = None
 
@@ -37,12 +38,15 @@ class ROSTopicMetrics:
                 self.start_time = now
             self.end_time = now
 
-            if hasattr(msg, '_buff'):
-                msg_size = len(msg._buff)
-            else:
-                msg_size = len(str(msg))
-
+            # if hasattr(msg, '_buff'):
+            #     msg_size = len(msg._buff)
+            # else:
+            #     msg_size = len(str(msg))
+            msg_size = len(msg._buff) if hasattr(msg, '_buff') else len(str(msg))
+            
             self.bytes_received += msg_size
+            
+            
 
     def get_hz(self):
         '''Calculate and return Hz.'''
@@ -51,22 +55,26 @@ class ROSTopicMetrics:
                 return None
 
             deltas = [self.times[i + 1] - self.times[i] for i in range(len(self.times) - 1)]
-            if deltas:
-                return 1.0 / (sum(deltas) / len(deltas))
-            else:
-                return None
+            return 1.0 / (sum(deltas) / len(deltas)) if deltas else -1
+
+            # if deltas:
+            #     return 1.0 / (sum(deltas) / len(deltas))
+            # else:
+            #     return None
 
     def get_bandwidth(self):
         '''Calculate and return Bandwidth.'''
         with self.bandwidth_lock:
-            if self.start_time is None or self.end_time is None:
-                return None
+            with self.bandwidth_lock:
+                if not self.start_time or not self.end_time:
+                    return -1
 
             duration = self.end_time - self.start_time
-            if duration == 0:
-                return None
+            # if duration == 0:
+            #     return None
 
-            return self.bytes_received / duration
+            # return self.bytes_received / duration
+            return self.bytes_received / duration if duration > 0 else -1
 
     def reset(self):
         '''Reset metrics data.'''
@@ -92,53 +100,70 @@ class MetricsManager:
             rospy.logerr(f"Failed to read YAML file: {e}")
             topic_list = []
 
+        # master = rosgraph.Master('/rostopic')
+        # published_topics = master.getPublishedTopics('')
+        # topic_names = [t[0] for t in published_topics]
+        # filtered_topic_list = [topic for topic in topic_list if topic in topic_names]
+
+        # rospy.loginfo(f'Init monitors for {len(filtered_topic_list)} topics...')
+
+        # for topic in filtered_topic_list:
+        #     self.monitors[topic] = ROSTopicMetrics(topic)
         master = rosgraph.Master('/rostopic')
-        published_topics = master.getPublishedTopics('')
+        published_topics = [t[0] for t in master.getPublishedTopics('')]
+        filtered_topics = [topic for topic in topic_list if topic in published_topics]
 
-        topic_names = [t[0] for t in published_topics]
-        filtered_topic_list = [topic for topic in topic_list if topic in topic_names]
-
-        rospy.loginfo(f'Init monitors for {len(filtered_topic_list)} topics...')
-
-        for topic in filtered_topic_list:
-            self.monitors[topic] = ROSTopicMetrics(topic)
-
+        rospy.loginfo(f"Initializing monitors for {len(filtered_topics)} topics...")
+        self.monitors = {topic: ROSTopicMetrics(topic) for topic in filtered_topics}
+        
     def get_metrics(self):
         '''Gather metrics from all monitored topics.'''
-        results = {}
-        for topic, monitor in self.monitors.items():
-            hz = monitor.get_hz()
-            bandwidth = monitor.get_bandwidth()
+        # results = {}
+        # for topic, monitor in self.monitors.items():
+        #     hz = monitor.get_hz()
+        #     bandwidth = monitor.get_bandwidth()
 
-            results[topic] = {
-                'hz': hz if hz is not None else 0.0,
-                'bw': bandwidth if bandwidth is not None else 0.0
+        #     results[topic] = {
+        #         'hz': hz if hz is not None else 0.0,
+        #         'bw': bandwidth if bandwidth is not None else 0.0
+        #     }
+        # results = {
+        #     topic: {
+        #         'hz': monitor.get_hz() if monitor.get_hz() is not None else -1,
+        #         'bw': monitor.get_bandwidth() if monitor.get_bandwidth() is not None else -1
+        #         }
+        #     for topic, monitor in self.monitors.items()
+        #     }
+        
+        # return results
+        return {
+            topic: {
+                'hz': monitor.get_hz(),
+                'bw': monitor.get_bandwidth()
             }
-        return results
+            for topic, monitor in self.monitors.items()
+        }
 
 
 def main():
+     rospy.init_node('topic_hzbw', anonymous=True)
+    topic_hzbw_pub = rospy.Publisher('/topic_hzbw', String, queue_size=100)
+
+    manager = MetricsManager()
+    rate = rospy.Rate(1)  # Publish at 1 Hz
     try:
-        rospy.init_node('topic_hzbw', anonymous=True)
-        topic_hzbw_pub = rospy.Publisher('/topic_hzbw', String, queue_size=100)
-
-        manager = MetricsManager()
-        rate = rospy.Rate(1)  # Publish at 1 Hz
-
         while not rospy.is_shutdown():
             metrics = manager.get_metrics()
-
             # Prepare JSON data for publishing
-            data = []
-            for topic, metric in metrics.items():
-                hz = metric['hz']
-                bw = metric['bw']
-                print(f"Topic: {topic}, Hz: {hz:.2f}, BW: {bw:.2f} bytes/sec")
-                data.append({
+
+            data = [
+                {
                     'topic': topic,
-                    'hz': hz,
-                    'bw': bw
-                })
+                    'hz': metric['hz'],
+                    'bw': metric['bw']
+                }
+                for topic, metric in metrics.items()
+            ]
 
             # Serialize the data to JSON and publish it
             json_data = json.dumps(data)
@@ -146,6 +171,7 @@ def main():
             topic_hzbw_pub.publish(json_data)
 
             rate.sleep()
+            
     except rospy.ROSInterruptException:
         rospy.loginfo("Shutting down topic_hzbw node.")
 

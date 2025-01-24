@@ -26,7 +26,7 @@ class Node:
     def __init__(self, name, pid):
         self.name = name
         self.proc = psutil.Process(pid)
-        self.resource_pub = rospy.Publisher(ns_join("~", name[1:], "resource"), String, queue_size=100)
+        self.resource_pub = rospy.Publisher(ns_join("~", name[1:], "resource"), String, queue_size=20)
 
     def publish(self):
         self.cpu = self.proc.cpu_percent()
@@ -37,7 +37,8 @@ class Node:
             'cpu': self.cpu,
             'mem': self.mem
         }
-        
+        usage = {key: value for key, value in zip(['node', 'cpu', 'mem'], [self.name, self.cpu, self.mem])}
+
         print(usage)
         usage_json = json.dumps(usage)
         
@@ -72,32 +73,38 @@ def main():
   
     this_ip = os.environ.get("ROS_IP")
     node_map = {}
-    ignored_nodes = set()
+    #ignored_nodes = set()
 
-    node_manager = NodeManager()
+    #node_manager = NodeManager()
     #cpu_publish = rospy.Publisher("~total_cpu", Float32, queue_size=20)
 
-    mem_topics = ["available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab"]
+    # mem_topics = ["available", "used", "free", "active", "inactive", "buffers", "cached", "shared", "slab"]
 
-    vm = psutil.virtual_memory()
+    # vm = psutil.virtual_memory()
     
-    tmp = []
-    for topic in mem_topics:
-        if topic in dir(vm):
-            tmp.append(topic)
-    mem_topics = tmp
+    # tmp = []
+    # for topic in mem_topics:
+    #     if topic in dir(vm):
+    #         tmp.append(topic)
+    # mem_topics = tmp
     
-    mem_publishers = []
+    #mem_publishers = []
     #for mem_topic in mem_topics:
         #mem_publishers.append(rospy.Publisher("~total_%s_mem" % mem_topic, UInt64, queue_size=20))
 
     while not rospy.is_shutdown():
-        for node in rosnode.get_node_names(): #ros 마스터에 있는 모든 노드 순회
-            if node in node_map or node in ignored_nodes:
-                continue
+        
+        valid_nodes = [
+            node for node in rosnode.get_node_names()
+            if node not in node_map #and node_manager.monitored(node)
+            ]
+        
+        for node in valid_nodes: #ros 마스터에 있는 모든 노드 순회
+            # if node in node_map or node in ignored_nodes:
+            #     continue
 
-            if not node_manager.monitored(node):
-                continue
+            # if not node_manager.monitored(node):
+            #     continue
             
             node_api = rosnode.get_api_uri(master, node, skip_cache=True)[2]
 
@@ -112,10 +119,10 @@ def main():
                   (this_ip is not None and this_ip == ros_ip) or \
                   subprocess.check_output("hostname").decode('utf-8').strip() in node_api
             
-            if not local_node:
-                ignored_nodes.add(node)
-                rospy.loginfo("[monitor] ignoring node %s with URI %s" % (node, node_api))
-                continue
+            # if not local_node:
+            #     ignored_nodes.add(node)
+            #     rospy.loginfo("[monitor] ignoring node %s with URI %s" % (node, node_api))
+            #     continue
 
             try:
                 resp = ServerProxy(node_api).getPid('/NODEINFO')
@@ -131,7 +138,7 @@ def main():
                         node_map[node] = Node(name=node, pid=pid)
                     except psutil.NoSuchProcess:
                         rospy.logwarn("[monitor] psutil can't see %s (pid = %d). Ignoring" % (node, pid))
-                        ignored_nodes.add(node)
+                        # ignored_nodes.add(node)
                     else:
                         rospy.loginfo("[monitor] adding new node %s" % node)
 
@@ -144,10 +151,10 @@ def main():
 
         #cpu_publish.publish(Float32(psutil.cpu_percent()))
 
-        vm = psutil.virtual_memory()
+        #vm = psutil.virtual_memory()
         
-        for mem_topic, mem_publisher in zip(mem_topics, mem_publishers):
-            mem_publisher.publish(UInt64(getattr(vm, mem_topic)))
+        # for mem_topic, mem_publisher in zip(mem_topics, mem_publishers):
+        #     mem_publisher.publish(UInt64(getattr(vm, mem_topic)))
 
         rospy.sleep(poll_period)
 
