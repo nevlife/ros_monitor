@@ -146,7 +146,7 @@ class MetricsManager:
 
 
 def main():
-     rospy.init_node('topic_hzbw', anonymous=True)
+    rospy.init_node('topic_hzbw', anonymous=True)
     topic_hzbw_pub = rospy.Publisher('/topic_hzbw', String, queue_size=100)
 
     manager = MetricsManager()

@@ -101,11 +101,11 @@ class SystemStatusMonitor:
                 ])
             self.total_resource_pub.publish(msg)
             
-            # rospy.loginfo(f'CPU: {cpu_info[0]:.2f}% {cpu_info[1]:.2f} GHz, Temp {cpu_info[2]:.2f}°C'
-            #               f'Mem: {mem_info[0]:.2f}/{mem_info[1]:.2f} MB {mem_info[2]:.2f}%')
+            rospy.loginfo(f'CPU: {cpu_info[0]:.2f}% {cpu_info[1]:.2f} GHz, Temp {cpu_info[2]:.2f}°C'
+                          f'Mem: {mem_info[0]:.2f}/{mem_info[1]:.2f} MB {mem_info[2]:.2f}%')
 
-            # rospy.loginfo(f'GPU {gpu[0]:.2f}: {gpu[1]} | Usage: {gpu[2]:.2f}% | '
-            #               f'GPU Mem: {gpu[3]:.2f}/{gpu[4]:.2f} MB {gpu[5]:.2f}% | Temp: {gpu[6]:.2f}°C')
+            rospy.loginfo(f'GPU {gpu[0]:.2f}: {gpu[1]} | Usage: {gpu[2]:.2f}% | '
+                          f'GPU Mem: {gpu[3]:.2f}/{gpu[4]:.2f} MB {gpu[5]:.2f}% | Temp: {gpu[6]:.2f}°C')
             
             self.rate.sleep()
             

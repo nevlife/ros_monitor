@@ -45,9 +45,9 @@ link_directories(
 )
 
 
-add_executable(sys_status_node scripts/listener/sys_status.cpp)
-add_executable(sys_status_def_node scripts/listener/sys_status_def.cpp)
-add_executable(random_float_pub_node scripts/utils/random_float_pub.cpp)
+add_executable(sys_status_node scripts/cpp/sys_status.cpp)
+add_executable(sys_status_def_node scripts/cpp/sys_status_def.cpp)
+add_executable(random_float_pub_node scripts/cpp/random_float_pub.cpp)
 
 target_link_libraries(sys_status_node ${catkin_LIBRARIES} nvidia-ml)
 target_link_libraries(sys_status_def_node ${catkin_LIBRARIES} nvidia-ml)
