@@ -24,22 +24,26 @@ class SystemStatusMonitor:
             rospy.logwarn(f"GPU initialization failed: {e}")
 
     def get_cpu_usage(self):
-        """return cpu used(%) and cpu curren freq"""
-        cpu_usage = psutil.cpu_percent(interval=1)
+        '''
+        psutil.cpu_times_percent return:
+        (user, nice, system, idle, iowait, irq, softirq, steal, guset, guset_nice)
+        '''
+        cpu_usage_total_percent = psutil.cpu_percent(interval=1)
+        cpu_usage = psutil.cpu_times_percent(interval=1) #Linux
+        
         cpu_freq = psutil.cpu_freq().current / 1000 if psutil.cpu_freq() else -1
         try:
             temps = psutil.sensors_temperatures()
             if 'coretemp' in temps: #x86 cpu
                 core_temps = temps['coretemp']
-                cpu_temp = sum([t.crrent for t in core_temps]) / len(core_temps)
+                cpu_temp = sum([t.current for t in core_temps]) / len(core_temps)
             elif 'cpu-thermal' in temps: #arm cpu
                 cpu_temp = temps['cpu-thermal'][0].current
             else:
                 cpu_temp = -1
         except Exception as e:
             cpu_temp = -1
-            
-        return [cpu_usage, cpu_freq, cpu_temp]
+        return [cpu_usage, cpu_freq, cpu_temp, cpu_usage_total_percent]
 
     def get_gpu_info(self):
         """return gpu info"""
@@ -99,13 +103,17 @@ class SystemStatusMonitor:
                     gpu[5], #gpu mem usage %
                     gpu[6], #gpu temp
                 ])
+                
             self.total_resource_pub.publish(msg)
             
-            rospy.loginfo(f'CPU: {cpu_info[0]:.2f}% {cpu_info[1]:.2f} GHz, Temp {cpu_info[2]:.2f}°C'
-                          f'Mem: {mem_info[0]:.2f}/{mem_info[1]:.2f} MB {mem_info[2]:.2f}%')
+            rospy.loginfo(f'CPU: user {cpu_info[0][0]:.2f}, system {cpu_info[0][2]}, idle {cpu_info[0][3]}, iowait {cpu_info[0][4]}'
+                          f'| Freq: {cpu_info[1]:.2f}GHz | Temp: {cpu_info[2]:.2f}C')
+            
+            rospy.loginfo(f'Mem: {mem_info[0]:.2f}/{mem_info[1]:.2f} MB ({mem_info[2]:.2f}%)')
 
-            rospy.loginfo(f'GPU {gpu[0]:.2f}: {gpu[1]} | Usage: {gpu[2]:.2f}% | '
-                          f'GPU Mem: {gpu[3]:.2f}/{gpu[4]:.2f} MB {gpu[5]:.2f}% | Temp: {gpu[6]:.2f}°C')
+            # rospy.loginfo(f'GPU {gpu[0]:.2f}: {gpu[1]} | Usage: {gpu[2]:.2f}% | '
+            #               f'GPU Mem: {gpu[3]:.2f}/{gpu[4]:.2f} MB {gpu[5]:.2f}% | Temp: {gpu[6]:.2f}°C')
+            rospy.loginfo(f'GPU: {gpu[2]:.2f}% | GPU Mem: {gpu[3]:.2f}/{gpu[4]:.2f} MB ({gpu[5]:.2f}%) | Temp: {gpu[6]:.2f}C')
             
             self.rate.sleep()
             
