@@ -1,11 +1,8 @@
 /node_resource_monitor/node_resource_monitor/resource
 /node_resource_monitor/rosout/resource
-/node_resource_monitor/rostopic_17636_1738073768993/resource
-/node_resource_monitor/rqt_gui_py_node_17197/resource
-/node_resource_monitor/topic_hzbw_17947_1738073814417/resource
-/node_resource_monitor/total_resouce_17351_1738073743129/resource
+/node_resource_monitor/topic_hzbw_3379_1738555971842/resource
+/node_resource_monitor/topic_hzbw_4537_1738556207907/resource
+/node_resource_monitor/total_resource/resource
 /rosout
 /rosout_agg
-/statistics
-/topic_hzbw
 /total_resource
