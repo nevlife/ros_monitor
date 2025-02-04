@@ -56,6 +56,9 @@
   <build_depend>message_generation</build_depend>
   <build_depend>geometry_msgs</build_depend>
 
+  <build_depend>jsoncpp</build_depend>
+  <exec_depend>jsoncpp</exec_depend>
+  
   <build_export_depend>std_msgs</build_export_depend>
   <build_export_depend>rospy_std_msgs</build_export_depend>
   <build_export_depend>message_runtime</build_export_depend>

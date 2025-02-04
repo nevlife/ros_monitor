@@ -10,6 +10,9 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP jsoncpp)
+
 add_message_files(
   FILES
   NodeStatus.msg
@@ -35,6 +38,7 @@ catkin_package(
 include_directories(
   #include
   ${catkin_INCLUDE_DIRS}
+  ${JSONCPP_INCLUDE_DIRS}
   /usr/local/cuda-12.6/targets/x86_64-linux/include  # NVML header path
 )
 
@@ -49,8 +53,13 @@ add_executable(random_float_pub_node scripts/cpp/random_float_pub.cpp)
 
 add_executable(total_resource_cpp scripts/cpp/total_resource.cpp)
 
+add_executable(nodes_resource_monitor scripts/cpp/get_nodes_resource.cpp)
+
+
 target_link_libraries(sys_status_node ${catkin_LIBRARIES} nvidia-ml)
 target_link_libraries(sys_status_def_node ${catkin_LIBRARIES} nvidia-ml)
 target_link_libraries(random_float_pub_node ${catkin_LIBRARIES})
 
 target_link_libraries(total_resource_cpp ${catkin_LIBRARIES} nvidia-ml)
+
+target_link_libraries(nodes_resource_monitor ${catkin_LIBRARIES} ${JSONCPP_LIBRARIES})

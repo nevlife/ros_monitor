@@ -1,44 +1,47 @@
 {
     "total_resource": {
-        "cpu_usage": 1.5,
-        "cpu_freq": -1.0,
+        "cpu_user": 536.760009765625,
+        "cpu_nice": 6.869999885559082,
+        "cpu_system": 427.4599914550781,
+        "cpu_idle": 144795.171875,
+        "cpu_iowait": 49.779998779296875,
+        "cpu_irq": 0.0,
+        "cpu_softirq": 79.69000244140625,
+        "cpu_steal": 0.0,
+        "cpu_guest": 0.0,
+        "cpu_guest_nice": 0.0,
+        "cpu_usage_percent": 0.7495315670967102,
         "cpu_temp": -1.0,
-        "mem_used": 1579.1875,
-        "mem_total": 7846.33203125,
-        "mem_percent": 23.799999237060547,
-        "gpu_id": 0.0,
-        "gpu_usage": 21.0,
-        "gpu_mem_used": 1150.67578125,
+        "cpu_load_1min": 0.07999999821186066,
+        "cpu_load_5min": 0.1899999976158142,
+        "cpu_load_15min": 0.10999999940395355,
+        "mem_used": 1873.0390625,
+        "mem_total": 7846.328125,
+        "mem_usage_percent": 23.871536254882812,
+        "gpu_usage_percent": 4.0,
+        "gpu_mem_used": 1208.796875,
         "gpu_mem_total": 6144.0,
-        "gpu_mem_percent": 18.72844696044922,
-        "gpu_temp": 34.0
+        "gpu_mem_usage": 19.674427032470703,
+        "gpu_temp`": null,
+        "gpu_temp": 32.0
     },
     "topic_hzbw": {
         "/rosout": {
-            "hz": 2.2286343913140017,
-            "bw": 230.98135671039117
+            "hz": 4.620061951891175,
+            "bw": 1356.4053648228692
         },
         "/rosout_agg": {
-            "hz": 2.228457531681363,
-            "bw": 230.76559915223336
+            "hz": 4.619350799456873,
+            "bw": 1361.3776721199692
+        },
+        "/topic_hzbw": {
+            "hz": 0.9998464506922633,
+            "bw": 316.6793369472736
+        },
+        "/total_resource": {
+            "hz": 1.0000255934329076,
+            "bw": 106.00320683551519
         }
     },
-    "node_resource": {
-        "/rosout": {
-            "cpu": 0.0,
-            "mem": 21098496
-        },
-        "/node_resource_monitor": {
-            "cpu": 0.0,
-            "mem": 88055808
-        },
-        "/topic_hzbw_49906_1737706284893": {
-            "cpu": 0.0,
-            "mem": 65331200
-        },
-        "/total_resouce_94865_1737716751571": {
-            "cpu": 1.0,
-            "mem": 81039360
-        }
-    }
+    "node_resource": {}
 }

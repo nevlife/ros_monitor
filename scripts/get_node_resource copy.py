@@ -26,7 +26,6 @@ class Node:
     def __init__(self, name, pid):
         self.name = name
         self.proc = psutil.Process(pid)
-        self.resource_pub = rospy.Publisher(ns_join("~", name[1:], "resource"), String, queue_size=20)
 
     def publish(self):
         self.cpu = self.proc.cpu_percent()
@@ -39,10 +38,8 @@ class Node:
         }
         usage = {key: value for key, value in zip(['node', 'cpu', 'mem'], [self.name, self.cpu, self.mem])}
 
-        print(usage)
         usage_json = json.dumps(usage)
         
-        self.resource_pub.publish(String(usage_json))
 
     def alive(self):
         return self.proc.is_running()

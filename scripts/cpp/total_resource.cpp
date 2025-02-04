@@ -9,6 +9,7 @@
 #include <numeric>
 #include <cstdlib>
 #include <sstream>
+#include <typeinfo>
 
 class SystemStatusMonitor {
 public:
@@ -52,7 +53,7 @@ public:
             std::vector<float> cpu_info = getCpuInfo();
             // user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice   0 ~ 9
             // + cpu_usage_percent + cpu_temp   10 ~ 11
-            // + load_1min_str_float + load_5min_str_float + load_15min_float   12 ~ 14
+            // + load_1min + load_5min + load_15min   12 ~ 14
             std::vector<float> mem_info = getMemoryUsage(); 
             std::vector<float> gpu_info = getGpuInfo();
 
@@ -64,8 +65,13 @@ public:
         
             total_resource_pub.publish(msg);
 
-            //ROS_INFO("CPU: user %.2f,  nice %.2f, system %.2f, idle, %.2f, iowait %.2f, irq %.2f, softirq %.2f, steal %.2f, guest %.2f, guest_nice %.2f",
-            //        cpu_info[0], c_info[2], cpu_info[3], cpu_info[4], cpu_info[5], cpu_info[6], cpu_info[7], cpu_info[8], cpu_info[9]);pu_info[1], cpu
+            // for (size_t i = 0; i < cpu_info.size(); i++) {
+            //     ROS_INFO("cpu_info[%ld] = %f (type: %s)", i, (double)cpu_info[i], typeid(cpu_info[i]).name());
+            // }
+
+
+            ROS_INFO("CPU: user %.2f,  nice %.2f, system %.2f, idle, %.2f, iowait %.2f, irq %.2f, softirq %.2f, steal %.2f, guest %.2f, guest_nice %.2f",
+                    cpu_info[0], cpu_info[1], cpu_info[2], cpu_info[3], cpu_info[4], cpu_info[5], cpu_info[6], cpu_info[7], cpu_info[8], cpu_info[9]);
             ROS_INFO("CPU: Usage %.2f%%, Temp %.2fC",cpu_info[10], cpu_info[11]);
             ROS_INFO("Mem: %.2f/%.2f MB (%.2f%%)", mem_info[0], mem_info[1], mem_info[2]);
             if (gpu_initialized) {
@@ -147,11 +153,13 @@ private:
             //sec = jiffies / hz
             cpu_info.push_back(static_cast<float>(val)/KernalHZ);
         }
+        
         float cpu_usage_percent;
         //fst run
         static long prev_total_cpu_time = 0;
         static long prev_total_idle_time = 0;
         static bool first_run = true; //flag
+        
         if (first_run) {
             cpu_usage_percent = -1.0;
             prev_total_cpu_time = total_cpu_time;
@@ -194,7 +202,7 @@ private:
         std::ifstream temp_f("/sys/class/thermal/thermal_zone0/temp");
         float cpu_temp = -1.0;
         if (temp_f >> cpu_temp) {
-            cpu_temp /= 1000.0;
+            cpu_temp /= 1000.0; //단위가 milli degree이므로 변환 필요
         }
 
         cpu_info.push_back(cpu_usage_percent);
@@ -210,11 +218,11 @@ private:
         struct sysinfo info;
         sysinfo(&info);
 
-        float total_mem = info.totalram / (1024.0 * 1024.0);
-        float used_mem = (info.totalram - info.freeram) / (1024.0 * 1024.0);
-        float mem_usage = (used_mem / total_mem) * 100.0;
+        float mem_used = (info.totalram - info.freeram) / (1024.0 * 1024.0);
+        float mem_total = info.totalram / (1024.0 * 1024.0);
+        float mem_usage_percent = (mem_used / mem_total) * 100.0;
 
-        return {used_mem, total_mem, mem_usage};
+        return {mem_used, mem_total, mem_usage_percent};
     }
     
     std::vector<float> getGpuInfo() {
@@ -230,13 +238,13 @@ private:
         nvmlDeviceGetMemoryInfo(gpu_handle, &memory);
         nvmlDeviceGetTemperature(gpu_handle, NVML_TEMPERATURE_GPU, &temperature);
 
-        float gpu_usage = utilization.gpu;
-        float gpu_mem_used = memory.used / (1024.0 * 1024.0);
-        float gpu_mem_total = memory.total / (1024.0 * 1024.0);
+        float gpu_usage_percent = utilization.gpu;
+        float gpu_mem_used = memory.used / (1024.0 * 1024.0); // bytes -> mb
+        float gpu_mem_total = memory.total / (1024.0 * 1024.0); // bytes -> mb
         float gpu_mem_usage = (gpu_mem_used / gpu_mem_total) * 100.0;
         float gpu_temp = temperature;
 
-        return {gpu_usage, gpu_mem_used, gpu_mem_total, gpu_mem_usage, gpu_temp};
+        return {gpu_usage_percent, gpu_mem_used, gpu_mem_total, gpu_mem_usage, gpu_temp};
     }
 };
 
