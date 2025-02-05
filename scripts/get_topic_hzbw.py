@@ -93,7 +93,7 @@ class MetricsManager:
             with open(self.yaml_file, 'r') as file:
                 topic_list = file.read().splitlines()
         except Exception as e:
-            rospy.logerr(f"Failed to read YAML file: {e}")
+            rospy.logerr(f"[monitor] Failed to read YAML file: {e}")
             topic_list = []
 
         # master = rosgraph.Master('/rostopic')
@@ -110,11 +110,12 @@ class MetricsManager:
             master = rosgraph.Master('/rostopic')
             published_topics = {t[0] for t in master.getPublishedTopics('')}
             filtered_topics = [topic for topic in topic_list if topic in published_topics]
+            
         except Exception as e:
-            rospy.logerr(f"Failed to retrieve published topics: {e}")
+            rospy.logerr(f"[monitor] Failed to retrieve published topics: {e}")
             filtered_topics = []
 
-        rospy.loginfo(f"Initializing monitors for {len(filtered_topics)} topics...")
+        rospy.loginfo(f"[monitor] Monitoring {len(filtered_topics)} topics...")
         self.monitors = {topic: ROSTopicMetrics(topic) for topic in filtered_topics}
 
     def get_metrics(self):
@@ -138,14 +139,10 @@ class MetricsManager:
         
         # return results
         
-        return {
-            topic: {
-                'hz': monitor.get_hz(),
-                'bw': monitor.get_bandwidth()
-            }
+        return [
+            {'topic': topic, 'hz': monitor.get_hz(), 'bw': monitor.get_bandwidth()}
             for topic, monitor in self.monitors.items()
-        }
-
+        ]
 
 def main():
     rospy.init_node('topic_hzbw', anonymous=True)
@@ -159,14 +156,8 @@ def main():
         while not rospy.is_shutdown():
             metrics = manager.get_metrics()
             
-            json_data = json.dumps([
-                {'topic': topic, 'hz': metric['hz'], 'bw': metric['bw']}
-                for topic, metric in metrics.items()
-            ])
+            topic_hzbw_pub.publish(json.dumps(metrics))
             
-            rospy.loginfo(json_data)
-            print(json_data)
-            topic_hzbw_pub.publish(json_data)
             rate.sleep()
             
     except rospy.ROSInterruptException:
