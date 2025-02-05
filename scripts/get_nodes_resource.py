@@ -39,11 +39,13 @@ class NodeManager:
         # usage = {key: value for key, value in zip(['cpu', 'mem'], [self.cpu, self.mem])}
 
         #return [self.name, self.cpu, self.mem]
-        return {
+        data = {
             'node': self.name,
             'cpu': self.proc.cpu_percent(),
             'mem': self.proc.memory_info().rss
         }
+        print(data)
+        return data
 
     def alive(self):
         return self.proc.is_running()
