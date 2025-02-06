@@ -32,11 +32,11 @@ class JSONManager:
                 'gpu_mem_used' : None,
                 'gpu_mem_total' : None,
                 'gpu_mem_usage' : None,
-                'gpu_temp`' : None,
+                'gpu_temp' : None,
             },
             
-            'topic_hzbw': {},
-            'node_resource': {},
+            'topics_hzbw': {},
+            'node_resource_usage': {},
         }
         #현재 파일 기준으로 설정
         self.file_path = os.path.join(os.path.dirname(__file__), "../data/diag.json")
@@ -71,10 +71,14 @@ class JSONManager:
         self.data['total_resource'][key] = value
 
     def update_topic_hzbw(self, topic_name, hz, bw):
-        self.data['topic_hzbw'][topic_name] = {'hz': hz, 'bw': bw}
+        if 'topics_hzbw' not in self.data:
+            self.data['topics_hzbw'] = {}
+        self.data['topics_hzbw'][topic_name] = {'hz': hz, 'bw': bw}
 
     def update_node_resource(self, node_name, cpu, mem):
-        self.data['node_resource'][node_name] = {'cpu': cpu, 'mem': mem}
+        if 'node_resource_usage' not in self.data:
+            self.data['node_resource_usage'] = {}
+        self.data['node_resource_usage'][node_name] = {'cpu': cpu, 'mem': mem}
 
 
 manager = JSONManager()
@@ -97,41 +101,51 @@ def total_resource_callback(total_resource_sub):
     except IndexError:
         rospy.logwarn('Invalid total_resource data')
 
-def topic_hzbw_callback(topic_hzbw_sub):
+def topics_hzbw_callback(topics_hzbw_sub):
     try:
-        data = json.loads(topic_hzbw_sub.data)
-        current_topics = set()
-        for item in data:
-            topic_name = item.get('topic', 'unknown')
-            hz = item.get('hz')
-            bw = item.get('bw')
+        data = json.loads(topics_hzbw_sub.data)
+        
+        #current_topics = set()
+        # for item in data:
+        #     topic_name = item.get('topic', 'unknown')
+        #     hz = item.get('hz')
+        #     bw = item.get('bw')
             
-            manager.update_topic_hzbw(topic_name, hz, bw)
+        #     manager.update_topic_hzbw(topic_name, hz, bw)
             
-            current_topics.add(topic_name)
+        #     current_topics.add(topic_name)
         
-        existing_topics = set(manager.data['topic_hzbw'].keys())
+        # existing_topics = set(manager.data['topics_hzbw'].keys())
         
-        disconnected_topics = existing_topics - current_topics
+        # disconnected_topics = existing_topics - current_topics
         
-        for topic in disconnected_topics:
-            del manager.data['topic_hzbw'][topic]
+        # for topic in disconnected_topics:
+        #     del manager.data['topics_hzbw'][topic]
+        
+        for topic in data:
+            #print(topic)
+            manager.update_topic_hzbw(
+                topic_name=topic.get('topic'),
+                hz=topic.get('hz'),
+                bw=topic.get('bw'),
+            )
             
     except json.JSONDecodeError as e:
-        rospy.logwarn(f'failed to parse topic_hzbw json: {e}')
+        rospy.logwarn(f'failed to parse topics_hzbw json: {e}')
 
-def node_resource_callback(node_resource_sub):
+def nodes_resource_callback(nodes_resource_sub):
     try:
-        data = json.loads(node_resource_sub.data)
-        
-        node_name = data.get('node', 'unknown')
-        cpu = round(data.get('cpu', -1), 6)
-        mem = data.get('mem', -1)
-        
-        manager.update_node_resource(node_name, cpu, mem)
-        
+        data = json.loads(nodes_resource_sub.data)
+        #print(type(data))
+        for node in data:
+            manager.update_node_resource(
+                node_name=node.get('node'),
+                cpu=node.get('cpu'),
+                mem=node.get('mem'),
+            )
+            
     except json.JSONDecodeError as e:
-        rospy.logwarn(f'failed to parse node_resource json: {e}')
+        rospy.logwarn(f'failed to parse nodes_resource json: {e}')
 
 def main():
     rospy.init_node('diag_listener', anonymous=True)
@@ -140,12 +154,8 @@ def main():
     rospy.Timer(rospy.Duration(1), manager.save_to_file)
 
     total_resource_sub = rospy.Subscriber('/total_resource', Float32MultiArray, total_resource_callback)
-    topic_hzbw_sub = rospy.Subscriber('/topic_hzbw', String, topic_hzbw_callback)
-
-    published_topics = rospy.get_published_topics()
-    for topic, topic_type in published_topics:
-        if topic.startswith('/node_resource_monitor'):
-            rospy.Subscriber(topic, String, node_resource_callback)
+    topic_hzbw_sub = rospy.Subscriber('/topics_hzbw', String, topics_hzbw_callback)
+    nodes_resource_sub = rospy.Subscriber('/node_resource_usage', String, nodes_resource_callback)
 
     rospy.spin()
 

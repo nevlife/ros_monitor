@@ -1,71 +1,122 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+import os
 import rospy
 import rosgraph.masterapi
-import json
-import time
-from collections import deque
 from std_msgs.msg import String
 
-class TopicMonitor:
+import csv
+import json
+
+import threading
+
+import time
+from collections import deque
+
+class TopicMonitor(threading.Thread):
     def __init__(self, topic):
+        super().__init__()
         self.topic = topic
         self.timestamps = deque(maxlen=500)
         self.byte_sizes = deque(maxlen=500)
         self.subscriber = rospy.Subscriber(topic, rospy.AnyMsg, self.callback)
-
+        
+        self.running = True
+        
     def callback(self, msg):
-        now = time.perf_counter()
+        now = time.time()
         msg_size = len(msg._buff) if hasattr(msg, '_buff') else len(str(msg))
         self.timestamps.append(now)
         self.byte_sizes.append(msg_size)
 
-    def get_hz(self):
-        now = time.perf_counter()
-        valid_timestamps = [t for t in self.timestamps if now - t <= 1]
-        elapsed_time = valid_timestamps[-1] - valid_timestamps[0] if len(valid_timestamps) > 1 else 1
-        return len(valid_timestamps) / elapsed_time if elapsed_time > 0 else 0
+    def get_hz_and_bw(self):
+        now = time.time()
+        
+        #valid_timestamps = [t for t in self.timestamps if now - t <= 1]
+        while self.timestamps and now - self.timestamps[0] > 1:
+            self.timestamps.popleft()
+            self.byte_sizes.popleft()
 
-    def get_bw(self):
-        now = time.perf_counter()
-        valid_byte_sizes = [size for t, size in zip(self.timestamps, self.byte_sizes) if now - t <= 1]
-        return sum(valid_byte_sizes) / 1024.0 if valid_byte_sizes else 0.0  # KB 변환
+        
+        n = len(self.timestamps)
+        
+        if n <= 1:
+            return 0, 0; #1hz 미만이면 0리턴
+        
+        elapsed_time = max(self.timestamps[-1] - self.timestamps[0], 1e-6) 
+        
+        # if elapsed_time <= 0:
+        #     return 0; #멀티 스레딩으로 인한 시간 역전 방지
+        
+        return (n -1) / elapsed_time , sum(self.byte_sizes) / 1024.0 if self.byte_sizes else 0.0
 
+    # def get_bw(self):
+    #     now = time.time()
+        
+    #     #valid_byte_sizes = [size for t, size in zip(self.timestamps, self.byte_sizes) if now - t <= 1]
+    #     while self.timestamps and now - self.timestamps[0] > 1:
+    #         self.timestamps.popleft()
+    #         self.byte_sizes.popleft()
+            
+    #     return sum(self.byte_sizes) / 1024.0 if self.byte_sizes else 0.0  #convert kb
+    
+    def run(self):
+        while self.running and not rospy.is_shutdown():
+            time.sleep(0.1)  # 불필요한 CPU 사용을 줄이기 위해 sleep
+        
+    def stop(self):
+        self.running = False
 
 class ROSTopicMonitor:
     def __init__(self):
         rospy.init_node("ros_topic_monitor", anonymous=True)
-        self.master = rosgraph.masterapi.Master('/roscore')
-        self.topic_monitors = {}  # 각 토픽별 객체 저장
-        self.publisher = rospy.Publisher("/topic_metrics", String, queue_size=100)
+        
+        #self.master = rosgraph.masterapi.Master('/roscore')
+        try:
+            self.master = rosgraph.Master('/rostopic')
+        except Exception as e:
+            rospy.logerr(f"[monitor] Failed to retrieve published topics: {e}")    
+                
+        self.topic_monitors = {} #토픽 객체
+        self.publisher = rospy.Publisher("/topics_hzbw", String, queue_size=100)
 
+        self.lock = threading.Lock()
+        self.monitor_thread = threading.Thread(target=self.run_monitoring)
+        self.monitor_thread.start()
+        
     def update_subscriptions(self):
-        active_topics = {t[0] for t in self.master.getSystemState()[0]}  # 현재 실행 중인 토픽 목록
+        active_topics = {t[0] for t in self.master.getSystemState()[0]}  #현재 실행 중인 토픽 목록
         new_topics = active_topics - set(self.topic_monitors.keys())
 
-        # 새로운 토픽을 객체로 추가
+        #새 토픽 추가하고 스레드 실행
         for topic in new_topics:
-            self.topic_monitors[topic] = TopicMonitor(topic)
-
-        # 존재하지 않는 토픽 삭제
+            monitor = TopicMonitor(topic)
+            self.topic_monitors[topic] = monitor
+            monitor.start()
+            
+        #토픽 삭제
         removed_topics = set(self.topic_monitors.keys()) - active_topics
+        
         for topic in removed_topics:
+            self.topic_monitors[topic].stop()
+            self.topic_monitors[topic].join()
             del self.topic_monitors[topic]
 
     def calculate_metrics(self):
         topic_metrics_list = []
         for topic, monitor in self.topic_monitors.items():
+            hz , bw = monitor.get_hz_and_bw()
             topic_metrics = {
                 "topic": topic,
-                "hz": round(monitor.get_hz(), 2),
-                "bw": round(monitor.get_bw(), 2)
+                "hz": hz,
+                "bw": bw,
             }
             print(topic_metrics)
             topic_metrics_list.append(topic_metrics)
 
         if topic_metrics_list:
-            self.publisher.publish(json.dumps(topic_metrics_list))
-
+            self.publisher.publish(json.dumps(topic_metrics_list))        
+            
     def run_monitoring(self):
         rate = rospy.Rate(1)  # 1Hz
         while not rospy.is_shutdown():
@@ -76,4 +127,9 @@ class ROSTopicMonitor:
 
 if __name__ == "__main__":
     monitor = ROSTopicMonitor()
-    monitor.run_monitoring()
+    try:
+        rospy.spin()
+    except KeyboardInterrupt:
+        for topic_monitor in monitor.topic_monitors.values():
+            topic_monitor.stop()
+            topic_monitor.join()

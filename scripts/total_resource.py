@@ -125,7 +125,7 @@ class SystemStatusMonitor:
 
 
 def main():
-    rospy.init_node('total_resouce', anonymous=True)
+    rospy.init_node('total_resource', anonymous=True)
     monitor = SystemStatusMonitor()
 
     try:
