@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QApplication
 )
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 
 
 def signal_handler(sig, frame):
@@ -33,106 +33,133 @@ class RosMonitor(QWidget):
         self.topic_hzbw_data = {}
         self.node_resource_usage_data = {}
 
-        # JSON 파일 경로 설정
-        self.file_path = os.path.expanduser("~/catkin_ws/src/vehicle_diag/data/diag.json")
+        #json path
+        self.file_path = os.path.expanduser('~/catkin_ws/src/vehicle_diag/data/diag.json')
 
-        # UI 초기화
         self.init_ui()
 
-        # 타이머 설정 (1초마다 JSON 파일 읽고 UI 갱신)
+        #ui refresh timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_ui_from_json)
-        self.timer.start(1000)  # 1초마다 실행
+        self.timer.start(1000)
 
     def init_ui(self):
-        """ UI 초기화 """
+        ''' UI 초기화 '''
         self.layout = QVBoxLayout(self)
 
-        # CPU 정보
-        self.cpu_label = QLabel("CPU Info: Loading...")
+        #cpu info
+        self.cpu_label = QLabel('CPU Info: Loading...')
         self.layout.addWidget(self.cpu_label)
 
-        # Memory 정보
-        self.mem_label = QLabel("Memory Info: Loading...")
+        #Ram info
+        self.mem_label = QLabel('Memory Info: Loading...')
         self.layout.addWidget(self.mem_label)
 
-        # GPU 정보
-        self.gpu_label = QLabel("GPU Info: Loading...")
+        #gpu info
+        self.gpu_label = QLabel('GPU Info: Loading...')
         self.layout.addWidget(self.gpu_label)
 
-        # Topics Hz/BW 테이블
+        #topics hz and bw table
         self.topics_table = QTableWidget(0, 3)
-        self.topics_table.setHorizontalHeaderLabels(["Topic", "Hz", "BW (KB/s)"])
+        self.topics_table.setHorizontalHeaderLabels(['Topic name', 'Hz', 'Bandwidth'])
         self.topics_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.layout.addWidget(self.topics_table)
 
-        # Node 리소스 테이블
+        #nodes resource table
         self.nodes_table = QTableWidget(0, 3)
-        self.nodes_table.setHorizontalHeaderLabels(["Node", "CPU (%)", "Memory (MB)"])
+        self.nodes_table.setHorizontalHeaderLabels(['Node name', 'CPU (%)', 'Ram (MB)'])
         self.nodes_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.layout.addWidget(self.nodes_table)
 
+            
     def update_ui_from_json(self):
-        """ JSON 파일을 읽고 UI를 업데이트 """
+        '''Read json file and update ui'''
         if not os.path.exists(self.file_path):
             return
 
         try:
-            with open(self.file_path, "r") as file:
+            with open(self.file_path, 'r') as file:
                 data = json.load(file)
-                self.total_resource_data = data.get("total_resource", {})
-                self.topic_hzbw_data = data.get("topics_hzbw", {})
-                self.node_resource_usage_data = data.get("node_resource_usage", {})
+                self.total_resource_data = data.get('total_resource', {})
+                self.topic_hzbw_data = data.get('topics_hzbw', {})
+                self.node_resource_usage_data = data.get('node_resource_usage', {})
 
                 self.update_total_resource_ui()
                 self.update_topics_table()
                 self.update_nodes_table()
         except Exception as e:
-            print(f"Error reading JSON file: {e}")
+            print(f'Error reading JSON file: {e}')
 
     def update_total_resource_ui(self):
-        """ CPU, Memory, GPU 정보 UI 업데이트 """
+        '''cpu, ram, gpu info update'''
         self.cpu_label.setText(
-            f"CPU: {self.total_resource_data.get('cpu_usage_percent', 'N/A')}% | "
-            f"Temp: {self.total_resource_data.get('cpu_temp', 'N/A')}°C | "
-            f"Load Avg: {self.total_resource_data.get('cpu_load_1min', 'N/A')}, "
-            f"{self.total_resource_data.get('cpu_load_5min', 'N/A')}, "
-            f"{self.total_resource_data.get('cpu_load_15min', 'N/A')}"
+            f"CPU: {self.total_resource_data.get('cpu_usage_percent'):.2f}% | "
+            f"Temp: {self.total_resource_data.get('cpu_temp'):.2f} C | "
+            f"Load Avg: {self.total_resource_data.get('cpu_load_1min'):.2f}, "
+            f"{self.total_resource_data.get('cpu_load_5min'):.2f}, "
+            f"{self.total_resource_data.get('cpu_load_15min'):.2f}"
         )
 
         self.mem_label.setText(
-            f"Memory: {self.total_resource_data.get('mem_used', 'N/A')}MB / "
-            f"{self.total_resource_data.get('mem_total', 'N/A')}MB "
-            f"({self.total_resource_data.get('mem_usage_percent', 'N/A')}%)"
+            f"Memory: {self.total_resource_data.get('mem_used'):.2f} / "
+            f"{self.total_resource_data.get('mem_total'):.2f} MB"
+            f"({self.total_resource_data.get('mem_usage_percent'):.2f}%)"
         )
 
         self.gpu_label.setText(
-            f"GPU: {self.total_resource_data.get('gpu_usage_percent', 'N/A')}% | "
-            f"Memory: {self.total_resource_data.get('gpu_mem_used', 'N/A')}MB / "
-            f"{self.total_resource_data.get('gpu_mem_total', 'N/A')}MB "
-            f"({self.total_resource_data.get('gpu_mem_usage', 'N/A')}%) | "
-            f"Temp: {self.total_resource_data.get('gpu_temp', 'N/A')}°C"
+            f"GPU: {self.total_resource_data.get('gpu_usage_percent'):.2f}% | "
+            f"Memory: {self.total_resource_data.get('gpu_mem_used'):.2f} / "
+            f"{self.total_resource_data.get('gpu_mem_total'):.2f} MB "
+            f"({self.total_resource_data.get('gpu_mem_usage'):.2f}%) | "
+            f"Temp: {self.total_resource_data.get('gpu_temp'):.2f} C"
         )
 
     def update_topics_table(self):
-        """ Topics Hz/BW 테이블 업데이트 """
+        ''' Topics Hz/BW 테이블 업데이트 '''
         self.topics_table.setRowCount(len(self.topic_hzbw_data))
+        
         for row, (topic, metrics) in enumerate(self.topic_hzbw_data.items()):
-            self.topics_table.setItem(row, 0, QTableWidgetItem(topic))
-            self.topics_table.setItem(row, 1, QTableWidgetItem(str(round(metrics.get("hz", 0), 2))))
-            self.topics_table.setItem(row, 2, QTableWidgetItem(str(round(metrics.get("bw", 0), 2))))
+            
+            
+            # 각 셀을 생성한 후, 읽기 전용으로 설정
+            topic_item = QTableWidgetItem(topic)
+            hz_item = QTableWidgetItem(str(metrics.get('hz', -1)))
+            bw_item = QTableWidgetItem(str(metrics.get('bw', -1)))
+
+            # 셀을 수정할 수 없도록 설정 (읽기 전용)
+            topic_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            hz_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            bw_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            
+            self.topics_table.setItem(row, 0, topic_item)
+            self.topics_table.setItem(row, 1, hz_item)
+            self.topics_table.setItem(row, 2, bw_item)
 
     def update_nodes_table(self):
-        """ Node 리소스 테이블 업데이트 """
+        ''' Node 리소스 테이블 업데이트 '''
         self.nodes_table.setRowCount(len(self.node_resource_usage_data))
+        
         for row, (node, resources) in enumerate(self.node_resource_usage_data.items()):
-            self.nodes_table.setItem(row, 0, QTableWidgetItem(node))
-            self.nodes_table.setItem(row, 1, QTableWidgetItem(str(resources.get("cpu", "N/A"))))
-            self.nodes_table.setItem(row, 2, QTableWidgetItem(str(round(resources.get("mem", 0) / (1024 * 1024), 2))))  # MB 단위 변환
+            
+            #node : str, metrics.get('cpu') : float , metrics.get('mem') : int
 
+            # 각 셀을 생성한 후, 읽기 전용으로 설정
+            node_item = QTableWidgetItem(node)
+            cpu_item = QTableWidgetItem(str(resources.get('cpu','N/A')))
+            mem_item = QTableWidgetItem(str(resources.get('mem','N/A')))
+
+            # 셀을 수정할 수 없도록 설정 (읽기 전용)
+            node_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            cpu_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            mem_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+            # 테이블에 값 추가
+            self.nodes_table.setItem(row, 0, node_item)
+            self.nodes_table.setItem(row, 1, cpu_item)
+            self.nodes_table.setItem(row, 2, mem_item)
 
 # Ensure this is run in a ROS node context
-if __name__ == "__main__":
+if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
 
     app = QApplication(sys.argv)

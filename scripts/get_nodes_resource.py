@@ -140,12 +140,17 @@ def main():
             except Exception as e:
                 rospy.logerr(f"[monitor] Unexpected error for node {node}: {e}")
                 
+        # nodes_data = [
+        #     node.get_metrics()
+        #     for node in node_map.values()
+        #     if node.alive()
+        # ]
         nodes_data = [
-            node.get_metrics()
-            for node in node_map.values()
-            if node.alive()
+            node_manager.get_metrics()
+            for node_manager in sorted(node_map.values(), key=lambda nm: nm.name)
+            if node_manager.alive()
         ]
-        
+
         node_map = {node_name: node_manager for node_name, node_manager in node_map.items() if node_manager.alive()} #node update
         
         # for node_name, node in list(node_map.items()):

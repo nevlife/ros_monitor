@@ -3,6 +3,7 @@ import os
 import json
 import rospy
 from std_msgs.msg import Float32MultiArray, String
+from typing import List, Dict, Any, Union
 
 class JSONManager:
     def __init__(self):
@@ -105,30 +106,21 @@ def topics_hzbw_callback(topics_hzbw_sub):
     try:
         data = json.loads(topics_hzbw_sub.data)
         
-        #current_topics = set()
-        # for item in data:
-        #     topic_name = item.get('topic', 'unknown')
-        #     hz = item.get('hz')
-        #     bw = item.get('bw')
-            
-        #     manager.update_topic_hzbw(topic_name, hz, bw)
-            
-        #     current_topics.add(topic_name)
-        
-        # existing_topics = set(manager.data['topics_hzbw'].keys())
-        
-        # disconnected_topics = existing_topics - current_topics
-        
-        # for topic in disconnected_topics:
-        #     del manager.data['topics_hzbw'][topic]
-        
-        for topic in data:
-            #print(topic)
-            manager.update_topic_hzbw(
-                topic_name=topic.get('topic'),
-                hz=topic.get('hz'),
-                bw=topic.get('bw'),
-            )
+        '''
+        topic['topic'] : str
+        topic['hz'] : float
+        topic['bw'] : float
+        '''
+        current_topics = {topic['topic']: {'hz': topic['hz'], 'bw': topic['bw']} for topic in data if 'topic' in topic}
+        manager.data['topics_hzbw'] = current_topics
+
+        # for topic in data:
+        #     #print(topic)
+        #     manager.update_topic_hzbw(
+        #         topic_name=topic.get('topic'),
+        #         hz=topic.get('hz'),
+        #         bw=topic.get('bw'),
+        #     )
             
     except json.JSONDecodeError as e:
         rospy.logwarn(f'failed to parse topics_hzbw json: {e}')
@@ -137,12 +129,21 @@ def nodes_resource_callback(nodes_resource_sub):
     try:
         data = json.loads(nodes_resource_sub.data)
         #print(type(data))
-        for node in data:
-            manager.update_node_resource(
-                node_name=node.get('node'),
-                cpu=node.get('cpu'),
-                mem=node.get('mem'),
-            )
+        '''
+        node['node'] : str
+        node['cpu'] : float
+        node['mem'] : str
+        '''
+        
+        current_nodes = {node['node']: {'cpu': node['cpu'], 'mem': node['mem']} for node in data if 'node' in node}
+        manager.data['node_resource_usage'] = current_nodes
+
+        # for node in data:
+        #     manager.update_node_resource(
+        #         node_name=node.get('node'),
+        #         cpu=node.get('cpu'),
+        #         mem=node.get('mem'),
+        #     )
             
     except json.JSONDecodeError as e:
         rospy.logwarn(f'failed to parse nodes_resource json: {e}')
