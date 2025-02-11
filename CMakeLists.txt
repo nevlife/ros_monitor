@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(vehicle_diagnostics_tool)
+project(ros_monitor)
 
 add_compile_options(-std=c++11)
 
@@ -47,19 +47,6 @@ link_directories(
 )
 
 
-add_executable(sys_status_node scripts/cpp/sys_status.cpp)
-add_executable(sys_status_def_node scripts/cpp/sys_status_def.cpp)
-add_executable(random_float_pub_node scripts/cpp/random_float_pub.cpp)
-
 add_executable(total_resource_cpp scripts/cpp/total_resource.cpp)
 
-add_executable(nodes_resource_monitor scripts/cpp/get_nodes_resource.cpp)
-
-
-target_link_libraries(sys_status_node ${catkin_LIBRARIES} nvidia-ml)
-target_link_libraries(sys_status_def_node ${catkin_LIBRARIES} nvidia-ml)
-target_link_libraries(random_float_pub_node ${catkin_LIBRARIES})
-
 target_link_libraries(total_resource_cpp ${catkin_LIBRARIES} nvidia-ml)
-
-target_link_libraries(nodes_resource_monitor ${catkin_LIBRARIES} ${JSONCPP_LIBRARIES})

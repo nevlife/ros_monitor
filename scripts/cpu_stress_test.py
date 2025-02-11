@@ -3,7 +3,7 @@ import time
 import multiprocessing
 
 # 행렬 크기 설정
-MATRIX_SIZE = 500  # 예시로 1000x1000 행렬
+MATRIX_SIZE = 500 
 
 # 행렬 곱셈 함수 (각 프로세스가 할 일)
 def matrix_multiplication_worker(i, A, B, result):

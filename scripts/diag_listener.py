@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 import os
 import json
+
 import rospy
 from std_msgs.msg import Float32MultiArray, String
 from typing import List, Dict, Any, Union
+
+import psutil
+
 
 class JSONManager:
     def __init__(self):
@@ -65,8 +69,12 @@ class JSONManager:
 
     def save_to_file(self, event=None):
         '''save json data to file'''
-        with open(self.file_path, 'w') as file:
-            json.dump(self.data, file, indent=4)
+        try:
+            with open(self.file_path, 'w') as file:
+                json.dump(self.data, file, indent=4)
+        except Exception as e:
+            rospy.logwarn(f'Failed to save JSON file: {e}')
+
 
     def update_total_resource(self, key, value):
         self.data['total_resource'][key] = value
@@ -82,8 +90,22 @@ class JSONManager:
         self.data['node_resource_usage'][node_name] = {'cpu': cpu, 'mem': mem}
 
 
+logical_cores = psutil.cpu_count(logical=True)
 manager = JSONManager()
 
+def convert_bytes(v):
+    if v < 1 << 10:
+        result = f"{v:.2f} B/s"
+    elif v < 1 << 20:
+        result = f"{v / (1 << 10):.2f} KB/s"
+    elif v < 1 << 30:
+        result = f"{v / (1 << 20):.2f} MB/s"
+    else:
+        result = f"{v / (1 << 30):.2f} GB/s"
+    
+    return result
+            
+    
 def total_resource_callback(total_resource_sub):
     keys = [
         'cpu_user', 'cpu_nice', 'cpu_system', 'cpu_idle', 'cpu_iowait',
@@ -111,7 +133,9 @@ def topics_hzbw_callback(topics_hzbw_sub):
         topic['hz'] : float
         topic['bw'] : float
         '''
-        current_topics = {topic['topic']: {'hz': topic['hz'], 'bw': topic['bw']} for topic in data if 'topic' in topic}
+        current_topics = {topic['topic']: {'hz': topic['hz'], 'bw': convert_bytes(v=topic['bw'])} for topic in data if 'topic' in topic}
+        
+                
         manager.data['topics_hzbw'] = current_topics
 
         # for topic in data:
@@ -135,7 +159,8 @@ def nodes_resource_callback(nodes_resource_sub):
         node['mem'] : str
         '''
         
-        current_nodes = {node['node']: {'cpu': node['cpu'], 'mem': node['mem']} for node in data if 'node' in node}
+        current_nodes = {node['node']: {'cpu': node['cpu']/logical_cores, 'mem': convert_bytes(v=node['mem'])} for node in data if 'node' in node}
+
         manager.data['node_resource_usage'] = current_nodes
 
         # for node in data:
@@ -156,7 +181,7 @@ def main():
 
     total_resource_sub = rospy.Subscriber('/total_resource', Float32MultiArray, total_resource_callback)
     topic_hzbw_sub = rospy.Subscriber('/topics_hzbw', String, topics_hzbw_callback)
-    nodes_resource_sub = rospy.Subscriber('/node_resource_usage', String, nodes_resource_callback)
+    nodes_resource_sub = rospy.Subscriber('/nodes_resource', String, nodes_resource_callback)
 
     rospy.spin()
 

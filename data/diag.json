@@ -1,78 +1,30 @@
 {
     "total_resource": {
-        "cpu_user": 2410.699951171875,
-        "cpu_nice": 1.690000057220459,
-        "cpu_system": 2054.6298828125,
-        "cpu_idle": 179535.125,
-        "cpu_iowait": 315.3399963378906,
+        "cpu_user": 574.510009765625,
+        "cpu_nice": 1.7300000190734863,
+        "cpu_system": 511.9599914550781,
+        "cpu_idle": 161625.96875,
+        "cpu_iowait": 49.61000061035156,
         "cpu_irq": 0.0,
-        "cpu_softirq": 587.7000122070312,
+        "cpu_softirq": 92.37000274658203,
         "cpu_steal": 0.0,
         "cpu_guest": 0.0,
         "cpu_guest_nice": 0.0,
-        "cpu_usage_percent": 2.118380069732666,
+        "cpu_usage_percent": 2.7346177101135254,
         "cpu_temp": -1.0,
-        "cpu_load_1min": 0.0,
-        "cpu_load_5min": 0.1599999964237213,
-        "cpu_load_15min": 0.27000001072883606,
-        "mem_used": 1781.00390625,
-        "mem_total": 7846.33203125,
-        "mem_usage_percent": 22.69855308532715,
-        "gpu_usage_percent": 19.0,
-        "gpu_mem_used": 1035.8359375,
+        "cpu_load_1min": 0.20999999344348907,
+        "cpu_load_5min": 0.25,
+        "cpu_load_15min": 0.20999999344348907,
+        "mem_used": 1971.5625,
+        "mem_total": 11866.32421875,
+        "mem_usage_percent": 16.614770889282227,
+        "gpu_usage_percent": 0.0,
+        "gpu_mem_used": 1192.8359375,
         "gpu_mem_total": 6144.0,
-        "gpu_mem_usage": 16.85930824279785,
-        "gpu_temp": 30.0
+        "gpu_mem_usage": 19.414648056030273,
+        "gpu_temp": 31.0
     },
     "topics_hzbw": {
-        "/clock": {
-            "hz": 0,
-            "bw": "0.00 B/s"
-        },
-        "/current_motor_RPM": {
-            "hz": 55,
-            "bw": "220.00 B/s"
-        },
-        "/current_steer": {
-            "hz": 55,
-            "bw": "220.00 B/s"
-        },
-        "/imu/data": {
-            "hz": 100,
-            "bw": "31.25 KB/s"
-        },
-        "/manual_status": {
-            "hz": 7,
-            "bw": "420.00 B/s"
-        },
-        "/node_resource_usage": {
-            "hz": 1,
-            "bw": "402.00 B/s"
-        },
-        "/rosout": {
-            "hz": 4,
-            "bw": "893.00 B/s"
-        },
-        "/rosout_agg": {
-            "hz": 4,
-            "bw": "893.00 B/s"
-        },
-        "/tf": {
-            "hz": 100,
-            "bw": "9.67 KB/s"
-        },
-        "/tf_static": {
-            "hz": 0,
-            "bw": "0.00 B/s"
-        },
-        "/topics_hzbw": {
-            "hz": 1,
-            "bw": "1.26 KB/s"
-        },
-        "/total_resource": {
-            "hz": 1,
-            "bw": "104.00 B/s"
-        },
         "/ublox_gps/fix": {
             "hz": 8,
             "bw": "952.00 B/s"
@@ -86,8 +38,8 @@
             "bw": "736.00 B/s"
         },
         "/usb_cam/image_raw/compressed": {
-            "hz": 8,
-            "bw": "579.70 KB/s"
+            "hz": 10,
+            "bw": "577.52 KB/s"
         },
         "/zed_node/depth/camera_info": {
             "hz": 15,
@@ -107,25 +59,33 @@
         },
         "/zed_node/obj_det/objects": {
             "hz": 15,
-            "bw": "11.15 KB/s"
+            "bw": "645.00 B/s"
         }
     },
     "node_resource_usage": {
-        "/diag_listener_43010_1738914630932": {
-            "cpu": 1.0,
-            "mem": 71282688
-        },
-        "/node_resource_usage": {
+        "/diag_listener": {
             "cpu": 0.0,
-            "mem": 77475840
+            "mem": "41.07 MB/s"
         },
-        "/ros_topic_monitor_48135_1738915605654": {
-            "cpu": 24.9,
-            "mem": 85426176
+        "/nodes_resource": {
+            "cpu": 0.0,
+            "mem": "42.04 MB/s"
+        },
+        "/play_1739266105575374328": {
+            "cpu": 0.1875,
+            "mem": "58.88 MB/s"
         },
         "/rosout": {
             "cpu": 0.0,
-            "mem": 21852160
+            "mem": "22.37 MB/s"
+        },
+        "/topics_hzbw": {
+            "cpu": 0.125,
+            "mem": "64.09 MB/s"
+        },
+        "/total_resource": {
+            "cpu": 0.0,
+            "mem": "56.09 MB/s"
         }
     }
 }

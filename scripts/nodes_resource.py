@@ -39,6 +39,7 @@ class NodeManager:
         # usage = {key: value for key, value in zip(['cpu', 'mem'], [self.cpu, self.mem])}
 
         #return [self.name, self.cpu, self.mem]
+        
         data = {
             'node': self.name,
             'cpu': self.proc.cpu_percent(),
@@ -52,14 +53,14 @@ class NodeManager:
 
 
 def main():
-    rospy.init_node("node_resource_usage")
+    rospy.init_node("nodes_resource")
     master = rospy.get_master()
 
     poll_period = rospy.get_param('~poll_period', 1.0)
     #source_list = rospy.get_param('~source_list', [])
     node_map = {}
     
-    nodes_resource_pub = rospy.Publisher('/node_resource_usage', String, queue_size=100)
+    nodes_resource_pub = rospy.Publisher('/nodes_resource', String, queue_size=100)
 
 
     #this_ip = os.environ.get("ROS_IP")

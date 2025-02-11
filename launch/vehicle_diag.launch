@@ -1,7 +1,0 @@
-<launch>
-    <!-- 노드 실행 -->
-    <node pkg="vehicle_diagnostics_tool" type="main_ui.py" name="vehicle_diag" output="screen"/>
-    <node pkg="vehicle_diagnostics_tool" type="sys_status.py" name="get_sys_status" output="screen"/>
-    <node pkg="vehicle_diagnostics_tool" type="get_topic_hzbw.py" name="topic_hzbw" output="screen"/>
-    <node pkg="vehicle_diagnostics_tool" type="get_node_resource.py" name="node_resource_monitor" output="screen"/>
-</launch>

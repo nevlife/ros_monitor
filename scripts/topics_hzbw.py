@@ -63,18 +63,8 @@ class TopicMonitor(threading.Thread):
         
         n_1s = len(self.timestamps)
 
-        total_bytes = sum(self.byte_sizes)
+        bw = sum(self.byte_sizes)
         
-        if total_bytes < 1 << 10:  # 1 KB 미만 (B 단위)
-            bw = f"{total_bytes:.2f} B/s"
-        elif total_bytes < 1 << 20:  # 1 KB 이상, 1 MB 미만
-            bw = f"{total_bytes / (1 << 10):.2f} KB/s"
-        elif total_bytes < 1 << 30:  # 1 MB 이상, 1 GB 미만
-            bw = f"{total_bytes / (1 << 20):.2f} MB/s"
-        else:  # 1 GB 이상, 1 TB 미만
-            bw = f"{total_bytes / (1 << 30):.2f} GB/s"
-            
-
         return n_1s, bw
     # def get_bw(self):
     #     now = time.time()
@@ -95,7 +85,7 @@ class TopicMonitor(threading.Thread):
 
 class ROSTopicMonitor:
     def __init__(self):
-        rospy.init_node("ros_topic_monitor", anonymous=True)
+        rospy.init_node("topics_hzbw", anonymous=True)
         
         #self.master = rosgraph.masterapi.Master('/roscore')
         try:
@@ -112,17 +102,35 @@ class ROSTopicMonitor:
         self.monitor_thread = threading.Thread(target=self.run_monitoring)
         self.monitor_thread.start()
         
+        self.yaml_path = '/home/pgw/catkin_ws/src/ros_monitor/cfg/topic_lst.yaml'
+        self.monitored_topics = self.load_yaml()
+        
+    def load_yaml(self):
+        if not os.path.exists(self.yaml_path):
+            rospy.logerr(f"[monitor] yaml fiel not found: {self.yaml_path}")
+            return None
+
+        try:
+            with open(self.yaml_path, 'r') as f:
+                topics = {line.strip() for line in f if line.strip()}
+                
+                rospy.loginfo(f"[monitor] list of topics to monitor: {topics}")
+                return topics
+        except Exception as e:
+            rospy.logerr(f"[monitor] Error loading yaml file: {e}")
+            return None
+        
     def update_subscriptions(self):
         active_topics = {t[0] for t in self.master.getSystemState()[0]}  #현재 실행 중인 토픽 목록
-        new_topics = active_topics - set(self.topic_monitors.keys())
-        removed_topics = set(self.topic_monitors.keys()) - active_topics  # 삭제된 토픽
+        
+        new_topics = active_topics - set(self.topic_monitors.keys())#새로 추가된 토픽들
+        
+        if self.monitored_topics is not None:
+            active_topics &= self.monitored_topics
+            new_topics &= self.monitored_topics
+        
+        removed_topics = set(self.topic_monitors.keys()) - active_topics  # 삭제된 토픽들들
 
-        #새 토픽 추가하고 스레드 실행
-        for topic in new_topics:
-            monitor = TopicMonitor(topic)
-            self.topic_monitors[topic] = monitor
-            monitor.start()
-            
         # #토픽 삭제
         # removed_topics = set(self.topic_monitors.keys()) - active_topics
         
@@ -154,6 +162,7 @@ class ROSTopicMonitor:
         for topic in sorted(self.topic_monitors.keys()):
             monitor = self.topic_monitors[topic]
             hz , bw = monitor.get_hz_and_bw()
+
             topic_metrics = {
                 "topic": topic,
                 "hz": hz,

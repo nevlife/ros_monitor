@@ -26,7 +26,7 @@ class RosMonitor(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('ROS Monitor UI')
-        self.resize(1200, 800)
+        self.resize(600, 1000)
 
         # JSON 데이터 저장
         self.total_resource_data = {}
@@ -34,7 +34,7 @@ class RosMonitor(QWidget):
         self.node_resource_usage_data = {}
 
         #json path
-        self.file_path = os.path.expanduser('~/catkin_ws/src/vehicle_diag/data/diag.json')
+        self.file_path = os.path.expanduser('/home/pgw/catkin_ws/src/ros_monitor/data/diag.json')
 
         self.init_ui()
 
@@ -62,16 +62,18 @@ class RosMonitor(QWidget):
         #topics hz and bw table
         self.topics_table = QTableWidget(0, 3)
         self.topics_table.setHorizontalHeaderLabels(['Topic name', 'Hz', 'Bandwidth'])
-        self.topics_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.topics_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Topic name 자동 확장
+        self.topics_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Hz 값 크기 맞춤
+        self.topics_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Bandwidth 크기 맞춤
         self.layout.addWidget(self.topics_table)
 
         #nodes resource table
         self.nodes_table = QTableWidget(0, 3)
-        self.nodes_table.setHorizontalHeaderLabels(['Node name', 'CPU (%)', 'Ram (MB)'])
-        self.nodes_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.nodes_table.setHorizontalHeaderLabels(['Node name', 'CPU (%)', 'Ram'])
+        self.nodes_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Node name 자동 확장
+        self.nodes_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)  # CPU 크기 맞춤
+        self.nodes_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Ram 크기 맞춤
         self.layout.addWidget(self.nodes_table)
-
-            
     def update_ui_from_json(self):
         '''Read json file and update ui'''
         if not os.path.exists(self.file_path):
