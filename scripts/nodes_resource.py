@@ -3,13 +3,13 @@
 import functools
 import os
 import subprocess
-
 import json
 
 import rosnode
 import rospy
 
 import psutil
+import pynvml
 
 try:
   from xmlrpc.client import ServerProxy
