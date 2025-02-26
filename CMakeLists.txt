@@ -10,6 +10,13 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+find_library(NVML_LIBRARY NAMES nvidia-ml libnvidia-ml)
+if(NVML_LIBRARY)
+  message(STATUS "Found NVML: ${NVML_LIBRARY}")
+else()
+  message(FATAL_ERROR "NVML library not found")
+endif()
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP jsoncpp)
 
@@ -47,6 +54,9 @@ link_directories(
 )
 
 
+
 add_executable(total_resource_cpp scripts/cpp/total_resource.cpp)
+add_executable(gpu_monitor_node scripts/test.cpp)
 
 target_link_libraries(total_resource_cpp ${catkin_LIBRARIES} nvidia-ml)
+target_link_libraries(gpu_monitor_node ${catkin_LIBRARIES} nvidia-ml)
