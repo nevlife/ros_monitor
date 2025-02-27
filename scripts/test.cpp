@@ -4,38 +4,81 @@
 #include <sstream>
 #include <cstdlib>
 #include <unistd.h>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <iomanip>
+
+// PID에 해당하는 프로세스 이름을 반환 (/proc/[pid]/comm 이용)
+std::string getProcessName(unsigned int pid)
+{
+    std::ifstream commFile("/proc/" + std::to_string(pid) + "/comm");
+    std::string name;
+    if (commFile.good() && std::getline(commFile, name))
+        return name;
+    return "Unknown";
+}
+
+// Compute 또는 Graphics 프로세스 정보를 출력하는 함수
+std::string formatProcessInfo(nvmlDevice_t device, bool compute)
+{
+    std::stringstream ss;
+    const char* processType = compute ? "Compute" : "Graphics";
+    unsigned int count = 64;
+    nvmlProcessInfo_t infos[64];
+    nvmlReturn_t result = compute ? 
+        nvmlDeviceGetComputeRunningProcesses(device, &count, infos) :
+        nvmlDeviceGetGraphicsRunningProcesses(device, &count, infos);
+    
+    if (result == NVML_SUCCESS && count > 0)
+    {
+        ss << "  Running " << processType << " Processes:\n";
+        ss << "    " << std::setw(6) << "PID" 
+           << "    " << std::setw(6) << "Mem(MiB)" 
+           << "    " << "Process Name\n";
+        for (unsigned int j = 0; j < count; j++)
+        {
+            unsigned int pid = infos[j].pid;
+            unsigned long long usedMem = infos[j].usedGpuMemory;
+            ss << "    " << std::setw(6) << pid 
+               << "    " << std::setw(6) << (usedMem / (1024 * 1024)) 
+               << "    " << getProcessName(pid) << "\n";
+        }
+    }
+    else
+    {
+        ss << "  No running " << processType << " processes.\n";
+    }
+    return ss.str();
+}
 
 int main(int argc, char** argv)
 {
-    // ROS 초기화
     ros::init(argc, argv, "gpu_monitor_node");
     ros::NodeHandle nh;
     ros::Publisher gpu_pub = nh.advertise<std_msgs::String>("gpu_usage", 10);
     ros::Rate loop_rate(1); // 1Hz 업데이트
 
-    // NVML 초기화
-    nvmlReturn_t result = nvmlInit_v2();
-    if (result != NVML_SUCCESS) {
-        ROS_ERROR("NVML 초기화 실패: %d", result);
+    if (nvmlInit_v2() != NVML_SUCCESS)
+    {
+        ROS_ERROR("NVML 초기화 실패");
         return 1;
     }
 
-    // 사용 가능한 GPU 개수 가져오기
     unsigned int deviceCount = 0;
-    result = nvmlDeviceGetCount_v2(&deviceCount);
-    if (result != NVML_SUCCESS) {
-        ROS_ERROR("GPU 개수 가져오기 실패: %d", result);
+    if (nvmlDeviceGetCount_v2(&deviceCount) != NVML_SUCCESS)
+    {
+        ROS_ERROR("GPU 개수 가져오기 실패");
         nvmlShutdown();
         return 1;
     }
 
-    // GPU 핸들 배열 할당 (C++에서는 malloc 시 캐스트 필요)
-    nvmlDevice_t *deviceHandles = (nvmlDevice_t*)malloc(sizeof(nvmlDevice_t) * deviceCount);
-    for (unsigned int i = 0; i < deviceCount; i++) {
-        result = nvmlDeviceGetHandleByIndex_v2(i, &deviceHandles[i]);
-        if (result != NVML_SUCCESS) {
-            ROS_ERROR("GPU %u 핸들 가져오기 실패: %d", i, result);
-        }
+    // std::vector를 사용하여 GPU 핸들을 관리
+    std::vector<nvmlDevice_t> devices(deviceCount);
+    for (unsigned int i = 0; i < deviceCount; i++)
+    {
+        if (nvmlDeviceGetHandleByIndex_v2(i, &devices[i]) != NVML_SUCCESS)
+            ROS_ERROR("GPU %u 핸들 가져오기 실패", i);
     }
 
     while (ros::ok())
@@ -47,37 +90,23 @@ int main(int argc, char** argv)
         for (unsigned int i = 0; i < deviceCount; i++)
         {
             char name[64];
-            result = nvmlDeviceGetName(deviceHandles[i], name, sizeof(name));
-            if (result != NVML_SUCCESS) {
+            if (nvmlDeviceGetName(devices[i], name, sizeof(name)) != NVML_SUCCESS)
                 snprintf(name, sizeof(name), "Unknown");
-            }
 
-            nvmlUtilization_t utilization;
-            result = nvmlDeviceGetUtilizationRates(deviceHandles[i], &utilization);
-            if (result != NVML_SUCCESS) {
+            nvmlUtilization_t util;
+            if (nvmlDeviceGetUtilizationRates(devices[i], &util) != NVML_SUCCESS)
+            {
                 ss << "GPU " << i << " (" << name << "): 사용률 가져오기 실패\n";
                 continue;
             }
 
             ss << "GPU " << i << " (" << name << "):\n"
-               << "  Core Utilization: " << utilization.gpu << "%\n"
-               << "  Memory Utilization: " << utilization.memory << "%\n";
-
-            // 프로세스 정보 가져오기 (NVML v2가 없으면 nvmlDeviceGetComputeRunningProcesses 사용)
-            unsigned int infoCount = 64;
-            nvmlProcessInfo_t infos[64];
-            result = nvmlDeviceGetComputeRunningProcesses(deviceHandles[i], &infoCount, infos);
-            if (result == NVML_SUCCESS && infoCount > 0) {
-                ss << "  Running Processes:\n";
-                ss << "    PID      GPU Memory (MiB)\n";
-                for (unsigned int j = 0; j < infoCount; j++) {
-                    unsigned int pid = infos[j].pid;
-                    unsigned long long usedMem = infos[j].usedGpuMemory;
-                    ss << "    " << pid << "      " << (usedMem / (1024 * 1024)) << "\n";
-                }
-            } else {
-                ss << "  No running compute processes.\n";
-            }
+               << "  Core Utilization: " << util.gpu << "%\n"
+               << "  Memory Utilization: " << util.memory << "%\n";
+            
+            // Compute 및 Graphics 프로세스 정보 출력
+            ss << formatProcessInfo(devices[i], true);
+            ss << formatProcessInfo(devices[i], false);
             ss << "\n";
         }
 
@@ -89,7 +118,6 @@ int main(int argc, char** argv)
         loop_rate.sleep();
     }
 
-    free(deviceHandles);
     nvmlShutdown();
     return 0;
 }
