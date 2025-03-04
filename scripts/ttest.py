@@ -1,150 +1,74 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import os
-import re
-import rosnode
-import rospy
-import pynvml
-from xmlrpc.client import ServerProxy
+import subprocess
 
-def find_ros_node_pid(node_name):
+def parse_pmon_output(lines):
     """
-    /proc 디렉토리를 검색하여, 해당 노드 이름이 포함된 cmdline을 가진 프로세스의 PID를 반환합니다.
+    nvidia-smi pmon -c 1 출력 예시:
+    # gpu       pid  type  sm   mem  enc  dec  jpg  ofa  command 
+    # Idx         #   C/G   %    %    %    %    %    %   name 
+        0      1234   C    50   30    -    -    -    -   python
+        0      2345   G    -    20    -    -    -    -   Xorg
     """
-    for pid in os.listdir("/proc"):
-        if pid.isdigit():
-            try:
-                with open(f"/proc/{pid}/cmdline", "r") as f:
-                    cmd = f.read()
-                if node_name in cmd:
-                    return int(pid)
-            except Exception:
-                continue
-    return 0
-
-def get_node_pid(node_name):
-    """
-    rosnode.get_api_uri()를 통해 해당 노드의 API URI를 얻고, XMLRPC로 getPid()를 호출하여 PID를 가져옵니다.
-    실패할 경우 /proc에서 직접 검색합니다.
-    """
-    try:
-        # caller_id와 target node를 함께 전달
-        node_uri = rosnode.get_api_uri(rospy.get_name(), node_name)
-    except Exception as e:
-        rospy.logwarn("Failed to lookup node URI for {}: {}".format(node_name, e))
-        return find_ros_node_pid(node_name)
+    parsed_data = []
     
-    if not node_uri:
-        rospy.logwarn("Empty node URI for {}".format(node_name))
-        return find_ros_node_pid(node_name)
-    
-    # URI 형식 예: "http://hostname:port/"
-    m = re.match(r"http://([^:]+):(\d+)/", node_uri)
-    if not m:
-        rospy.logwarn("Failed to parse node URI for {}: {}".format(node_name, node_uri))
-        return find_ros_node_pid(node_name)
-    host, port_str = m.group(1), m.group(2)
-    try:
-        port = int(port_str)
-    except Exception:
-        rospy.logwarn("Invalid port in node URI for {}: {}".format(node_name, node_uri))
-        return find_ros_node_pid(node_name)
-    
-    try:
-        client = ServerProxy("http://{}:{}/".format(host, port))
-        result = client.getPid(rospy.get_name())
-        # result는 보통 [statusCode, statusMessage, pid]
-        if isinstance(result, list) and len(result) >= 3:
-            return int(result[2])
-    except Exception as e:
-        rospy.logwarn("Failed to call getPid on node {}: {}".format(node_name, e))
-        return find_ros_node_pid(node_name)
-    
-    rospy.logwarn("Invalid getPid response from node {}".format(node_name))
-    return find_ros_node_pid(node_name)
-
-def get_all_ros_pids():
-    """
-    rosnode.get_node_names()를 사용하여 ROS에 등록된 모든 노드의 PID 집합을 반환합니다.
-    """
-    pids = set()
-    for node in rosnode.get_node_names():
-        pid = get_node_pid(node)
-        if pid:
-            pids.add(pid)
-    return pids
-
-def get_gpu_usage_by_pids(pids):
-    """
-    이미 NVML이 초기화된 상태에서, 입력받은 PID 집합에 해당하는 GPU 프로세스 정보를 조회합니다.
-    반환값은 각 PID에 대해 GPU 사용 정보를 딕셔너리 형태로 저장한 자료입니다.
-    """
-    usage_info = {}
-    try:
-        device_count = pynvml.nvmlDeviceGetCount()
-    except pynvml.NVMLError as e:
-        rospy.logwarn("Failed to get GPU count: {}".format(e))
-        return usage_info
-
-    for i in range(device_count):
-        try:
-            dev = pynvml.nvmlDeviceGetHandleByIndex(i)
-            dev_name = pynvml.nvmlDeviceGetName(dev)
-            util = pynvml.nvmlDeviceGetUtilizationRates(dev)
-        except pynvml.NVMLError as e:
-            rospy.logwarn("Error retrieving GPU {} info: {}".format(i, e))
+    # 실제 데이터 라인을 걸러낼 때, 주석(#)으로 시작하는 라인은 무시
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
             continue
+        
+        # 공백 기준으로 분할
+        cols = line.split()
+        # 예시: ['0', '1234', 'C', '50', '30', '-', '-', '-', '-', 'python']
+        # 인덱스/개수가 정확히 맞는지 확인 (10개)
+        if len(cols) >= 10:
+            gpu_idx = cols[0]
+            pid = cols[1]
+            process_type = cols[2]
+            sm_usage = cols[3]
+            mem_usage = cols[4]
+            enc_usage = cols[5]
+            dec_usage = cols[6]
+            jpg_usage = cols[7]
+            ofa_usage = cols[8]
+            command = " ".join(cols[9:])  # command 부분에 공백이 포함될 수도 있으므로 join
 
-        # Compute와 Graphics 프로세스 모두 조회
-        try:
-            procs_compute = pynvml.nvmlDeviceGetComputeRunningProcesses(dev)
-        except pynvml.NVMLError:
-            procs_compute = []
-        try:
-            procs_graphics = pynvml.nvmlDeviceGetGraphicsRunningProcesses(dev)
-        except pynvml.NVMLError:
-            procs_graphics = []
-        all_procs = procs_compute + procs_graphics
+            # '-' 로 표시된 항목은 None 처럼 처리
+            sm_usage = None if sm_usage == '-' else float(sm_usage)
+            mem_usage = None if mem_usage == '-' else float(mem_usage)
+            enc_usage = None if enc_usage == '-' else float(enc_usage)
+            dec_usage = None if dec_usage == '-' else float(dec_usage)
+            jpg_usage = None if jpg_usage == '-' else float(jpg_usage)
+            ofa_usage = None if ofa_usage == '-' else float(ofa_usage)
 
-        for proc in all_procs:
-            if proc.pid in pids:
-                used_mem = proc.usedGpuMemory / (1024*1024)  # MiB 단위
-                info = {
-                    "gpu_index": i,
-                    "gpu_name": dev_name.decode() if isinstance(dev_name, bytes) else dev_name,
-                    "used_mem_MiB": used_mem,
-                    "gpu_utilization": util.gpu,
-                    "mem_utilization": util.memory
-                }
-                if proc.pid in usage_info:
-                    usage_info[proc.pid].append(info)
-                else:
-                    usage_info[proc.pid] = [info]
-    return usage_info
+            parsed_data.append({
+                'gpu_idx': gpu_idx,
+                'pid': pid,
+                'type': process_type,
+                'sm_usage': sm_usage,
+                'mem_usage': mem_usage,
+                'enc_usage': enc_usage,
+                'dec_usage': dec_usage,
+                'jpg_usage': jpg_usage,
+                'ofa_usage': ofa_usage,
+                'command': command
+            })
+    
+    return parsed_data
 
-def main():
-    rospy.init_node("ros_gpu_usage_monitor", anonymous=False)
-    rate = rospy.Rate(1)  # 1Hz
-
-    # NVML 초기화 (함수 밖에서 처리)
+def get_pmon_data():
+    cmd = ["nvidia-smi", "pmon", "-c", "1"]
     try:
-        pynvml.nvmlInit()
-    except pynvml.NVMLError as e:
-        rospy.logerr("NVML initialization failed: {}".format(e))
-        return
+        output = subprocess.check_output(cmd, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        # nvidia-smi가 실패하거나 잘못된 옵션인 경우
+        print("Error executing nvidia-smi pmon:", e)
+        return []
 
-    rospy.loginfo("Monitoring GPU usage for all ROS processes...")
-
-    while not rospy.is_shutdown():
-        ros_pids = get_all_ros_pids()
-        gpu_usage = get_gpu_usage_by_pids(ros_pids)
-        rospy.loginfo("GPU usage for ROS processes:")
-        for pid in ros_pids:
-            usage = gpu_usage.get(pid, "No GPU usage")
-            rospy.loginfo("PID {}: {}".format(pid, usage))
-        rate.sleep()
-
-    pynvml.nvmlShutdown()
+    lines = output.split("\n")
+    data = parse_pmon_output(lines)
+    return data
 
 if __name__ == "__main__":
-    main()
+    pmon_data = get_pmon_data()
+    for entry in pmon_data:
+        print(entry)

@@ -1,29 +1,19 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-import functools
 import os
-import subprocess
-import json
 import re
-
 import rosnode
 import rospy
-
-import psutil
 import pynvml
-
-try:
-    from xmlrpc.client import ServerProxy
-except ImportError:
-    from xmlrpclib import ServerProxy
-
+import psutil
+import json
+from xmlrpc.client import ServerProxy
 from std_msgs.msg import String
 
-def ns_join(*names):
-    return functools.reduce(rospy.names.ns_join, names, "")
-
 def find_ros_node_pid(node_name):
-    """ /proc에서 cmdline을 검색하여 노드 이름이 포함된 프로세스의 PID를 반환 """
+    """
+    /proc에서 cmdline을 검색하여 ROS 노드 이름이 포함된 프로세스의 PID를 반환.
+    """
     for pid in os.listdir("/proc"):
         if pid.isdigit():
             try:
@@ -37,96 +27,136 @@ def find_ros_node_pid(node_name):
 
 def get_node_pid(node_name):
     """
-    rosnode.get_api_uri()를 통해 노드의 API URI를 얻고 XMLRPC로 getPid()를 호출해 PID를 가져옴.
-    실패하면 /proc에서 직접 검색합니다.
+    ROS 마스터를 통해 노드 API URI를 가져와 XMLRPC로 getPid() 요청.
+    실패하면 /proc에서 검색.
     """
+    system_nodes = ["/rosout", rospy.get_name()]
+    if node_name in system_nodes:
+        rospy.logdebug("Skipping system node {}".format(node_name))
+        return 0
+
     try:
-        # caller_id와 대상 노드 이름을 함께 전달
         node_uri = rosnode.get_api_uri(rospy.get_name(), node_name)
     except Exception as e:
-        rospy.logwarn("Failed to lookup node URI for %s: %s", node_name, str(e))
+        rospy.logwarn("Failed to lookup node URI for {}: {}. Falling back to /proc search.".format(node_name, e))
         return find_ros_node_pid(node_name)
     
     if not node_uri:
-        rospy.logwarn("Empty node URI for %s", node_name)
+        rospy.logwarn("Empty node URI for {}. Falling back to /proc search.".format(node_name))
         return find_ros_node_pid(node_name)
     
-    # URI 형식 예: "http://hostname:port/"
+    # API URI 분석
     m = re.match(r"http://([^:]+):(\d+)/", node_uri)
     if not m:
-        rospy.logwarn("Failed to parse node URI for %s: %s", node_name, node_uri)
+        rospy.logwarn("Failed to parse node URI for {}: {}. Falling back to /proc search.".format(node_name, node_uri))
         return find_ros_node_pid(node_name)
     host, port_str = m.group(1), m.group(2)
     try:
         port = int(port_str)
     except Exception:
-        rospy.logwarn("Invalid port in node URI for %s: %s", node_name, node_uri)
+        rospy.logwarn("Invalid port in node URI for {}: {}. Falling back to /proc search.".format(node_name, node_uri))
         return find_ros_node_pid(node_name)
     
     try:
         client = ServerProxy("http://{}:{}/".format(host, port))
         result = client.getPid(rospy.get_name())
-        # result는 보통 [statusCode, statusMessage, pid]
         if isinstance(result, list) and len(result) >= 3:
             return int(result[2])
     except Exception as e:
-        rospy.logwarn("Failed to call getPid on node %s: %s", node_name, str(e))
+        rospy.logwarn("Failed to call getPid on node {}: {}. Falling back to /proc search.".format(node_name, e))
         return find_ros_node_pid(node_name)
     
-    rospy.logwarn("Invalid getPid response from node %s", node_name)
+    rospy.logwarn("Invalid getPid response from node {}. Falling back to /proc search.".format(node_name))
     return find_ros_node_pid(node_name)
 
-class NodeManager:
-    def __init__(self, name, pid):
-        self.name = name
-        self.proc = psutil.Process(pid)
+def get_all_ros_pids():
+    """
+    ROS 마스터에서 등록된 모든 노드들의 PID를 가져옴 (시스템 노드는 제외).
+    """
+    ignore_list = ["/rosout", rospy.get_name()]
+    pids = {}
+    for node in rosnode.get_node_names():
+        if node in ignore_list:
+            continue
+        pid = get_node_pid(node)
+        if pid:
+            pids[node] = pid
+    return pids
 
-    def get_metrics(self):
-        data = {
-            'node': self.name,
-            'cpu': self.proc.cpu_percent(),
-            'mem': self.proc.memory_info().rss
-        }
-        rospy.loginfo("%s", data)
-        return data
+def get_gpu_usage_by_pids(pids):
+    """
+    PID 리스트를 기반으로 GPU에서 실행 중인 프로세스의 GPU 사용량을 반환.
+    """
+    usage_info = {}
+    try:
+        device_count = pynvml.nvmlDeviceGetCount()
+    except pynvml.NVMLError as e:
+        rospy.logwarn("Failed to get GPU count: {}".format(e))
+        return usage_info
 
-    def alive(self):
-        return self.proc.is_running()
+    for i in range(device_count):
+        try:
+            dev = pynvml.nvmlDeviceGetHandleByIndex(i)
+            dev_name = pynvml.nvmlDeviceGetName(dev)
+            util = pynvml.nvmlDeviceGetUtilizationRates(dev)
+        except pynvml.NVMLError as e:
+            rospy.logwarn("Error retrieving GPU {} info: {}".format(i, e))
+            continue
+
+        # Compute 및 Graphics 프로세스 조회
+        try:
+            procs_compute = pynvml.nvmlDeviceGetComputeRunningProcesses(dev)
+        except pynvml.NVMLError:
+            procs_compute = []
+        try:
+            procs_graphics = pynvml.nvmlDeviceGetGraphicsRunningProcesses(dev)
+        except pynvml.NVMLError:
+            procs_graphics = []
+        all_procs = procs_compute + procs_graphics
+
+        for proc in all_procs:
+            if proc.pid in pids.values():
+                node_name = [name for name, pid in pids.items() if pid == proc.pid][0]  # PID에 해당하는 노드 찾기
+                used_mem = proc.usedGpuMemory / (1024*1024)  # MiB 단위
+                info = {
+                    "gpu_index": i,
+                    "gpu_name": dev_name.decode() if isinstance(dev_name, bytes) else dev_name,
+                    "used_mem_MiB": used_mem,
+                    "gpu_utilization": util.gpu,
+                    "mem_utilization": util.memory
+                }
+                if node_name in usage_info:
+                    usage_info[node_name].append(info)
+                else:
+                    usage_info[node_name] = [info]
+    return usage_info
 
 def main():
-    rospy.init_node("nodes_resource")
-    master = rospy.get_master()
-
-    poll_period = rospy.get_param('~poll_period', 1.0)
-    node_map = {}
-    
+    rospy.init_node("ros_gpu_usage_monitor", anonymous=False)
+    rate = rospy.Rate(1)  # 1Hz
     nodes_resource_pub = rospy.Publisher('/nodes_resource', String, queue_size=100)
 
+    # NVML 초기화
+    try:
+        pynvml.nvmlInit()
+    except pynvml.NVMLError as e:
+        rospy.logerr("NVML initialization failed: {}".format(e))
+        return
+
+    rospy.loginfo("Monitoring GPU usage for all ROS processes...")
+
     while not rospy.is_shutdown():
-        # 노드 이름 목록 중, 아직 node_map에 없는 노드들만 valid_nodes로 처리
-        valid_nodes = [node for node in rosnode.get_node_names() if node not in node_map]
+        ros_pids = get_all_ros_pids()
+        gpu_usage = get_gpu_usage_by_pids(ros_pids)
+        output_data = {"ros_pids": ros_pids, "gpu_usage": gpu_usage}
+        msg = String()
+        msg.data = json.dumps(output_data)
+        nodes_resource_pub.publish(msg)
+        rospy.loginfo("Published GPU usage: {}".format(msg.data))
+        rate.sleep()
 
-        for node in valid_nodes:
-            try:
-                pid = get_node_pid(node)
-                if pid:
-                    node_map[node] = NodeManager(name=node, pid=pid)
-                    rospy.loginfo("[monitor] adding new node %s (pid %d)" % (node, pid))
-                else:
-                    rospy.logwarn("[monitor] Failed to get PID for node %s" % node)
-            except Exception as e:
-                rospy.logerr("[monitor] Unexpected error for node %s: %s" % (node, str(e)))
-        
-        # 수집된 노드들의 리소스 정보 가져오기
-        nodes_data = [nm.get_metrics() for nm in sorted(node_map.values(), key=lambda nm: nm.name) if nm.alive()]
-        
-        # 살아있는 노드만 node_map에 유지
-        node_map = {node_name: nm for node_name, nm in node_map.items() if nm.alive()}
-
-        nodes_resource_pub.publish(json.dumps(nodes_data))
-        rospy.sleep(poll_period)
-
-    rospy.loginfo("[monitor] shutting down")
+    rospy.loginfo("Shutting down...")
+    pynvml.nvmlShutdown()
 
 if __name__ == "__main__":
     main()

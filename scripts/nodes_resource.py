@@ -53,10 +53,19 @@ class NodeManager:
     def alive(self):
         return self.proc.is_running()
 
-
+class GpuNodeManager:
+    def __init__(self,):
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError as e:
+            rospy.logerr("NVML initialization failed: {}".format(e))
+            return
+        
+    def get_gpu_metrics(self):
+        
 def main():
-    rospy.init_node('nodes_gpu_monitor', anonymous=False)
-    pub = rospy.Publisher('nodes_gpu_monitor', String, queue_size=100)
+    rospy.init_node('nodes_resource', anonymous=False)
+    master = rospy.get_master()
     rate = rospy.Rate(1)
 
     poll_period = rospy.get_param('~poll_period', 1.0)
