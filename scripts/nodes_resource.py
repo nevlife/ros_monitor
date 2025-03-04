@@ -45,6 +45,8 @@ class NodeManager:
             'cpu': self.proc.cpu_percent(),
             'mem': self.proc.memory_info().rss
         }
+        
+        
         print(data)
         return data
 
@@ -53,16 +55,16 @@ class NodeManager:
 
 
 def main():
-    rospy.init_node("nodes_resource")
-    master = rospy.get_master()
+    rospy.init_node('nodes_gpu_monitor', anonymous=False)
+    pub = rospy.Publisher('nodes_gpu_monitor', String, queue_size=100)
+    rate = rospy.Rate(1)
 
     poll_period = rospy.get_param('~poll_period', 1.0)
     #source_list = rospy.get_param('~source_list', [])
     node_map = {}
     
     nodes_resource_pub = rospy.Publisher('/nodes_resource', String, queue_size=100)
-
-
+    
     #this_ip = os.environ.get("ROS_IP")
     #ignored_nodes = set()
 
@@ -130,6 +132,7 @@ def main():
                     else:
                         try:
                             node_map[node] = NodeManager(name=node, pid=pid)
+
                         except psutil.NoSuchProcess:
                             rospy.logwarn("[monitor] psutil can't see %s (pid = %d). Ignoring" % (node, pid))
                         else:
