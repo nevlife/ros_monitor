@@ -26,7 +26,7 @@ class RosMonitor(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('ROS Monitor UI')
-        self.resize(600, 1000)
+        self.resize(1200, 900)
 
         # JSON 데이터 저장
         self.total_resource_data = {}
@@ -45,19 +45,19 @@ class RosMonitor(QWidget):
 
     def init_ui(self):
         ''' UI 초기화 '''
-        self.layout = QVBoxLayout(self)
+        self.layout = QGridLayout(self)
 
         #cpu info
         self.cpu_label = QLabel('CPU Info: Loading...')
-        self.layout.addWidget(self.cpu_label)
+        self.layout.addWidget(self.cpu_label, 0, 0)
 
         #Ram info
         self.mem_label = QLabel('Memory Info: Loading...')
-        self.layout.addWidget(self.mem_label)
+        self.layout.addWidget(self.mem_label, 1, 0)
 
         #gpu info
         self.gpu_label = QLabel('GPU Info: Loading...')
-        self.layout.addWidget(self.gpu_label)
+        self.layout.addWidget(self.gpu_label, 2, 0)
 
         #topics hz and bw table
         self.topics_table = QTableWidget(0, 3)
@@ -65,7 +65,7 @@ class RosMonitor(QWidget):
         self.topics_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Topic name 자동 확장
         self.topics_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Hz 값 크기 맞춤
         self.topics_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Bandwidth 크기 맞춤
-        self.layout.addWidget(self.topics_table)
+        self.layout.addWidget(self.topics_table, 3, 0, 1, 1)
 
         #nodes resource table
         self.nodes_table = QTableWidget(0, 3)
@@ -73,7 +73,10 @@ class RosMonitor(QWidget):
         self.nodes_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # Node name 자동 확장
         self.nodes_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)  # CPU 크기 맞춤
         self.nodes_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Ram 크기 맞춤
-        self.layout.addWidget(self.nodes_table)
+        self.layout.addWidget(self.nodes_table, 3, 1, 1, 1)
+        
+        self.setLayout(self.layout)
+        
     def update_ui_from_json(self):
         '''Read json file and update ui'''
         if not os.path.exists(self.file_path):

@@ -59,9 +59,7 @@ class GpuNodeManager:
             pynvml.nvmlInit()
         except pynvml.NVMLError as e:
             rospy.logerr("NVML initialization failed: {}".format(e))
-            return
         
-    def get_gpu_metrics(self):
         
 def main():
     rospy.init_node('nodes_resource', anonymous=False)

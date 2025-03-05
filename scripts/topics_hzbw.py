@@ -85,6 +85,9 @@ class TopicMonitor(threading.Thread):
 
 class ROSTopicMonitor:
     def __init__(self):
+        self.yaml_path = '/home/pgw/catkin_ws/src/ros_monitor/cfg/topic_lst.yaml'
+        self.monitored_topics = self.load_yaml()
+        
         rospy.init_node("topics_hzbw", anonymous=True)
         
         #self.master = rosgraph.masterapi.Master('/roscore')
@@ -101,9 +104,7 @@ class ROSTopicMonitor:
         self.lock = threading.Lock()
         self.monitor_thread = threading.Thread(target=self.run_monitoring)
         self.monitor_thread.start()
-        
-        self.yaml_path = '/home/pgw/catkin_ws/src/ros_monitor/cfg/topic_lst.yaml'
-        self.monitored_topics = self.load_yaml()
+    
         
     def load_yaml(self):
         if not os.path.exists(self.yaml_path):
