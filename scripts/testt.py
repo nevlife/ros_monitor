@@ -1,132 +1,108 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-import functools
-import os
+
 import subprocess
-import json
-import re
 
-import rosnode
-import rospy
-
-import psutil
-import pynvml
-
-try:
-    from xmlrpc.client import ServerProxy
-except ImportError:
-    from xmlrpclib import ServerProxy
-
-from std_msgs.msg import String
-
-def ns_join(*names):
-    return functools.reduce(rospy.names.ns_join, names, "")
-
-def find_ros_node_pid(node_name):
-    """ /proc에서 cmdline을 검색하여 노드 이름이 포함된 프로세스의 PID를 반환 """
-    for pid in os.listdir("/proc"):
-        if pid.isdigit():
-            try:
-                with open(f"/proc/{pid}/cmdline", "r") as f:
-                    cmd = f.read()
-                if node_name in cmd:
-                    return int(pid)
-            except Exception:
-                continue
-    return 0
-
-def get_node_pid(node_name):
+def parse_pmon_output(lines):
     """
-    rosnode.get_api_uri()를 통해 노드의 API URI를 얻고 XMLRPC로 getPid()를 호출해 PID를 가져옴.
-    실패하면 /proc에서 직접 검색합니다.
+    nvidia-smi pmon -c 1 출력 예시:
+
+    10컬럼 형식:
+    # gpu       pid  type  sm   mem  enc  dec  jpg  ofa  command 
+    # Idx         #   C/G   %    %    %    %    %    %   name 
+        0      1234   C    50   30    -    -    -    -   python
+
+    8컬럼 형식:
+    # gpu         pid  type    sm    mem    enc    dec    command
+    # Idx           #   C/G     %      %      %      %    name
+        0        981     G      -      -      -      -    Xorg
+        0    1204448     G      -      -      -      -    Xorg
     """
-    try:
-        # caller_id와 대상 노드 이름을 함께 전달
-        node_uri = rosnode.get_api_uri(rospy.get_name(), node_name)
-    except Exception as e:
-        rospy.logwarn("Failed to lookup node URI for %s: %s", node_name, str(e))
-        return find_ros_node_pid(node_name)
+    parsed_data = []
     
-    if not node_uri:
-        rospy.logwarn("Empty node URI for %s", node_name)
-        return find_ros_node_pid(node_name)
-    
-    # URI 형식 예: "http://hostname:port/"
-    m = re.match(r"http://([^:]+):(\d+)/", node_uri)
-    if not m:
-        rospy.logwarn("Failed to parse node URI for %s: %s", node_name, node_uri)
-        return find_ros_node_pid(node_name)
-    host, port_str = m.group(1), m.group(2)
-    try:
-        port = int(port_str)
-    except Exception:
-        rospy.logwarn("Invalid port in node URI for %s: %s", node_name, node_uri)
-        return find_ros_node_pid(node_name)
-    
-    try:
-        client = ServerProxy("http://{}:{}/".format(host, port))
-        result = client.getPid(rospy.get_name())
-        # result는 보통 [statusCode, statusMessage, pid]
-        if isinstance(result, list) and len(result) >= 3:
-            return int(result[2])
-    except Exception as e:
-        rospy.logwarn("Failed to call getPid on node %s: %s", node_name, str(e))
-        return find_ros_node_pid(node_name)
-    
-    rospy.logwarn("Invalid getPid response from node %s", node_name)
-    return find_ros_node_pid(node_name)
-
-class NodeManager:
-    def __init__(self, name, pid):
-        self.name = name
-        self.proc = psutil.Process(pid)
-
-    def get_metrics(self):
-        data = {
-            'node': self.name,
-            'cpu': self.proc.cpu_percent(),
-            'mem': self.proc.memory_info().rss
-        }
-        rospy.loginfo("%s", data)
-        return data
-
-    def alive(self):
-        return self.proc.is_running()
-
-def main():
-    rospy.init_node("nodes_resource")
-    master = rospy.get_master()
-
-    poll_period = rospy.get_param('~poll_period', 1.0)
-    node_map = {}
-    
-    nodes_resource_pub = rospy.Publisher('/nodes_resource', String, queue_size=100)
-
-    while not rospy.is_shutdown():
-        # 노드 이름 목록 중, 아직 node_map에 없는 노드들만 valid_nodes로 처리
-        valid_nodes = [node for node in rosnode.get_node_names() if node not in node_map]
-
-        for node in valid_nodes:
-            try:
-                pid = get_node_pid(node)
-                if pid:
-                    node_map[node] = NodeManager(name=node, pid=pid)
-                    rospy.loginfo("[monitor] adding new node %s (pid %d)" % (node, pid))
-                else:
-                    rospy.logwarn("[monitor] Failed to get PID for node %s" % node)
-            except Exception as e:
-                rospy.logerr("[monitor] Unexpected error for node %s: %s" % (node, str(e)))
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
         
-        # 수집된 노드들의 리소스 정보 가져오기
-        nodes_data = [nm.get_metrics() for nm in sorted(node_map.values(), key=lambda nm: nm.name) if nm.alive()]
+        cols = line.split()
         
-        # 살아있는 노드만 node_map에 유지
-        node_map = {node_name: nm for node_name, nm in node_map.items() if nm.alive()}
+        # 10컬럼 형식 처리
+        if len(cols) >= 10:
+            gpu_idx = cols[0]
+            pid = cols[1]
+            process_type = cols[2]
+            sm_usage = cols[3]
+            mem_usage = cols[4]
+            enc_usage = cols[5]
+            dec_usage = cols[6]
+            jpg_usage = cols[7]
+            ofa_usage = cols[8]
+            command = " ".join(cols[9:])
+            
+            # '-' 값은 None 처리, 나머지는 float 변환
+            sm_usage = None if sm_usage == '-' else float(sm_usage)
+            mem_usage = None if mem_usage == '-' else float(mem_usage)
+            enc_usage = None if enc_usage == '-' else float(enc_usage)
+            dec_usage = None if dec_usage == '-' else float(dec_usage)
+            jpg_usage = None if jpg_usage == '-' else float(jpg_usage)
+            ofa_usage = None if ofa_usage == '-' else float(ofa_usage)
+            
+            parsed_data.append({
+                'gpu_idx': gpu_idx,
+                'pid': pid,
+                'type': process_type,
+                'sm_usage': sm_usage,
+                'mem_usage': mem_usage,
+                'enc_usage': enc_usage,
+                'dec_usage': dec_usage,
+                'jpg_usage': jpg_usage,
+                'ofa_usage': ofa_usage,
+                'command': command
+            })
+        
+        # 8컬럼 형식 처리
+        elif len(cols) == 8:
+            gpu_idx = cols[0]
+            pid = cols[1]
+            process_type = cols[2]
+            sm_usage = cols[3]
+            mem_usage = cols[4]
+            enc_usage = cols[5]
+            dec_usage = cols[6]
+            command = cols[7]
+            
+            sm_usage = None if sm_usage == '-' else float(sm_usage)
+            mem_usage = None if mem_usage == '-' else float(mem_usage)
+            enc_usage = None if enc_usage == '-' else float(enc_usage)
+            dec_usage = None if dec_usage == '-' else float(dec_usage)
+            
+            parsed_data.append({
+                'gpu_idx': gpu_idx,
+                'pid': pid,
+                'type': process_type,
+                'sm_usage': sm_usage,
+                'mem_usage': mem_usage,
+                'enc_usage': enc_usage,
+                'dec_usage': dec_usage,
+                'command': command
+            })
+    
+    return parsed_data
 
-        nodes_resource_pub.publish(json.dumps(nodes_data))
-        rospy.sleep(poll_period)
+def get_pmon_data():
+    cmd = ["nvidia-smi", "pmon", "-c", "1"]
+    try:
+        output = subprocess.check_output(cmd, universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        print("Error executing nvidia-smi pmon:", e)
+        return []
 
-    rospy.loginfo("[monitor] shutting down")
+    lines = output.split("\n")
+    data = parse_pmon_output(lines)
+    return data
 
 if __name__ == "__main__":
-    main()
+    pmon_data = get_pmon_data()
+    for entry in pmon_data:
+        print(entry)

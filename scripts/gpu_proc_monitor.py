@@ -25,7 +25,6 @@ def parse_pmon_output(lines):
     
     for line in lines:
         line = line.strip()
-        
         if not line or line.startswith('#'):
             continue
         
@@ -91,14 +90,12 @@ def parse_pmon_output(lines):
                 'dec_usage': dec_usage,
                 'command': command
             }
-        
+
+        if pid == '-':
+            continue
         else:
-            parsed_data = {
-                'gpu_idx': 'None',
-            }
-            
-        parsed_data_list.append(parsed_data)
-    
+            parsed_data_list.append(parsed_data)
+        
     return parsed_data_list
 
 def get_pmon_data():
@@ -107,6 +104,7 @@ def get_pmon_data():
     
     try:
         output = subprocess.check_output(cmd, universal_newlines=True)
+
     except subprocess.CalledProcessError as e:
         rospy.logerr("Error executing nvidia-smi pmon: %s" % e)
         return []

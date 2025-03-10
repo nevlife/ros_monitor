@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
 import os
 import json
 
@@ -44,7 +46,7 @@ class JSONManager:
             'node_resource_usage': {},
             'gpu_pmon': {},
         }
-        #현재 파일 기준으로 설정
+        
         self.file_path = os.path.join(os.path.dirname(__file__), "../data/diag.json")
         
         #check directory
@@ -192,6 +194,8 @@ def gpu_pmon_callback(gpu_pmon_sub):
                 'mem_usage': parsed_data['mem_usage'],
                 'enc_usage': parsed_data['enc_usage'],
                 'dec_usage': parsed_data['dec_usage'],
+                'jpg_usage': parsed_data['jpg_usage'],
+                'ofa_usage': parsed_data['ofa_usage'],
                 'command': parsed_data['command'],
             }
         
