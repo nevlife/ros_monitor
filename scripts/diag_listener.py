@@ -187,17 +187,29 @@ def gpu_pmon_callback(gpu_pmon_sub):
         for parsed_data in data:
             key = parsed_data['pid']
             
-            parsed_data_list[parsed_data['pid']] = {
-                'gpu_idx': parsed_data['gpu_idx'],
-                'type': parsed_data['type'],
-                'sm_usage': parsed_data['sm_usage'],
-                'mem_usage': parsed_data['mem_usage'],
-                'enc_usage': parsed_data['enc_usage'],
-                'dec_usage': parsed_data['dec_usage'],
-                'jpg_usage': parsed_data['jpg_usage'],
-                'ofa_usage': parsed_data['ofa_usage'],
-                'command': parsed_data['command'],
-            }
+            if len(parsed_data) >= 10:
+                parsed_data_list[parsed_data['pid']] = {
+                    'gpu_idx': parsed_data['gpu_idx'],
+                    'type': parsed_data['type'],
+                    'sm_usage': parsed_data['sm_usage'],
+                    'mem_usage': parsed_data['mem_usage'],
+                    'enc_usage': parsed_data['enc_usage'],
+                    'dec_usage': parsed_data['dec_usage'],
+                    'jpg_usage': parsed_data['jpg_usage'],
+                    'ofa_usage': parsed_data['ofa_usage'],
+                    'command': parsed_data['command'],
+                }
+                
+            elif len(parsed_data) >= 8:
+                parsed_data_list[parsed_data['pid']] = {
+                    'gpu_idx': parsed_data['gpu_idx'],
+                    'type': parsed_data['type'],
+                    'sm_usage': parsed_data['sm_usage'],
+                    'mem_usage': parsed_data['mem_usage'],
+                    'enc_usage': parsed_data['enc_usage'],
+                    'dec_usage': parsed_data['dec_usage'],
+                    'command': parsed_data['command'],
+                }
         
         manager.data['gpu_pmon'] = parsed_data_list
 

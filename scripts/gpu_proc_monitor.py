@@ -5,6 +5,7 @@ import rospy
 from std_msgs.msg import String
 import subprocess
 import json
+import psutil
 
 def parse_pmon_output(lines):
     """
@@ -88,6 +89,8 @@ def parse_pmon_output(lines):
                 'mem_usage': mem_usage,
                 'enc_usage': enc_usage,
                 'dec_usage': dec_usage,
+                'jpg_usage': None,
+                'ofa_usage': None,
                 'command': command
             }
 
@@ -115,7 +118,7 @@ def get_pmon_data():
 
 def main():
     rospy.init_node("gpu_pmon_publisher", anonymous=True)
-    pub = rospy.Publisher("/gpu_pmon", String, queue_size=10)
+    pub = rospy.Publisher("/gpu_pmon", String, queue_size=100)
 
     rate = rospy.Rate(1)
 
