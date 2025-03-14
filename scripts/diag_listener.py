@@ -162,7 +162,7 @@ def nodes_resource_callback(nodes_resource_sub):
         node['mem'] : str
         '''
         
-        current_nodes = {node['node']: {'cpu': node['cpu']/logical_cores, 'mem': convert_bytes(v=node['mem'])} for node in data if 'node' in node}
+        current_nodes = {node['node']: {'cpu': round(node['cpu']/logical_cores, 3), 'mem': convert_bytes(v=node['mem'])} for node in data if 'node' in node}
         
         manager.data['node_resource_usage'] = current_nodes
 

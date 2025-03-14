@@ -85,9 +85,21 @@ class RosMonitor(QWidget):
         
         self.gpu_proc_table = QTableWidget(0, 10)
         self.gpu_proc_table.setHorizontalHeaderLabels(['pid', 'proc_name', 'type', 'sm', 'mem', 'enc', 'dec', 'jpg', 'ofa', 'command'])
-        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+
+        # 첫 번째 열(pid)은 사용자가 조정 가능하도록 설정
+
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.Interactive)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.Interactive)
+    
+        
         self.layout.addWidget(self.gpu_proc_table, 7, 0, 3, 2) # (위젯, 시작 행, 시작 열, 행 개수, 열 개수)
 
         self.setLayout(self.layout)

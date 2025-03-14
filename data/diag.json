@@ -1,28 +1,28 @@
 {
     "total_resource": {
-        "cpu_user": 9984.3896484375,
-        "cpu_nice": 151.38999938964844,
-        "cpu_system": 13396.1796875,
-        "cpu_idle": 10992417.0,
-        "cpu_iowait": 2178.949951171875,
+        "cpu_user": 4829.56005859375,
+        "cpu_nice": 14.09000015258789,
+        "cpu_system": 3970.070068359375,
+        "cpu_idle": 910040.25,
+        "cpu_iowait": 350.760009765625,
         "cpu_irq": 0.0,
-        "cpu_softirq": 3197.81005859375,
+        "cpu_softirq": 1489.3199462890625,
         "cpu_steal": 0.0,
         "cpu_guest": 0.0,
         "cpu_guest_nice": 0.0,
-        "cpu_usage_percent": 2.386934757232666,
+        "cpu_usage_percent": 4.109589099884033,
         "cpu_temp": -1.0,
-        "cpu_load_1min": 0.38999998569488525,
-        "cpu_load_5min": 0.2800000011920929,
-        "cpu_load_15min": 0.27000001072883606,
-        "mem_used": 2139.4453125,
+        "cpu_load_1min": 0.9700000286102295,
+        "cpu_load_5min": 0.6000000238418579,
+        "cpu_load_15min": 0.36000001430511475,
+        "mem_used": 6055.70703125,
         "mem_total": 11866.32421875,
-        "mem_usage_percent": 18.02955436706543,
-        "gpu_usage_percent": 21.0,
-        "gpu_mem_used": 1229.15234375,
+        "mem_usage_percent": 51.032711029052734,
+        "gpu_usage_percent": 4.0,
+        "gpu_mem_used": 1797.57421875,
         "gpu_mem_total": 6144.0,
-        "gpu_mem_usage": 20.005735397338867,
-        "gpu_temp": 32.0
+        "gpu_mem_usage": 29.25739288330078,
+        "gpu_temp": 33.0
     },
     "topics_hzbw": {
         "/ublox_gps/fix": {
@@ -39,7 +39,7 @@
         },
         "/usb_cam/image_raw/compressed": {
             "hz": 10,
-            "bw": "456.45 KB/s"
+            "bw": "331.42 KB/s"
         },
         "/zed_node/depth/camera_info": {
             "hz": 15,
@@ -59,44 +59,34 @@
         },
         "/zed_node/obj_det/objects": {
             "hz": 15,
-            "bw": "11.15 KB/s"
+            "bw": "30.15 KB/s"
         }
     },
     "node_resource_usage": {
-        "/diag_listener": {
-            "cpu": 0.0,
-            "mem": "41.52 MB/s"
+        "/diag_listener_13412_1741921963334": {
+            "cpu": 0.062,
+            "mem": "53.99 MB/s"
         },
         "/nodes_resource": {
             "cpu": 0.0,
-            "mem": "43.21 MB/s"
+            "mem": "66.90 MB/s"
         },
-        "/play_1741140831805705154": {
-            "cpu": 0.375,
-            "mem": "57.63 MB/s"
+        "/play_1741922026794014077": {
+            "cpu": 0.188,
+            "mem": "54.72 MB/s"
         },
         "/rosout": {
             "cpu": 0.0,
-            "mem": "18.02 MB/s"
+            "mem": "19.27 MB/s"
         },
-        "/topics_hzbw": {
-            "cpu": 0.25,
-            "mem": "59.51 MB/s"
+        "/topics_hzbw_13778_1741922013615": {
+            "cpu": 0.188,
+            "mem": "55.43 MB/s"
         },
-        "/total_resource": {
+        "/total_resource_13670_1741921996295": {
             "cpu": 0.0,
-            "mem": "61.48 MB/s"
+            "mem": "72.33 MB/s"
         }
     },
-    "gpu_pmon": {
-        "-": {
-            "gpu_idx": "0",
-            "type": "-",
-            "sm_usage": null,
-            "mem_usage": null,
-            "enc_usage": null,
-            "dec_usage": null,
-            "command": "-"
-        }
-    }
+    "gpu_pmon": {}
 }
