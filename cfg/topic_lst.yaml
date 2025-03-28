@@ -1,3 +1,16 @@
+/clock
+/current_motor_RPM
+/current_steer
+/gpu_pmon
+/imu/data
+/manual_status
+/nodes_resource
+/rosout
+/rosout_agg
+/tf
+/tf_static
+/topics_hzbw
+/total_resource
 /ublox_gps/fix
 /ublox_gps/fix_velocity
 /ublox_gps/navpvt
