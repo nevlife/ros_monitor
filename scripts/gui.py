@@ -1,99 +1,70 @@
 #!/usr/bin/env python3
-import rospy
-import json
-import os
-import time
-from std_msgs.msg import Float32MultiArray, String
-from copy import deepcopy
+import sys
+import signal
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel,
+    QTableWidget, QTableWidgetItem, QHeaderView
+)
+from PySide6.QtCore import Qt, QTimer
+import psutil
 
-class RosMonitorDataLogger:
-    DATA_TIMEOUT = 2  # 데이터 유효 시간(초)
+def signal_handler(sig, frame):
+    QApplication.quit()
+    sys.exit(0)
 
+class RosMonitor(QWidget):
     def __init__(self):
-        rospy.init_node("ros_monitor_logger", anonymous=True)
+        super().__init__()
+        self.setWindowTitle('ROS Monitor UI (Only Layout)')
+        self.resize(1200, 900)
+        self.init_ui()
 
-        # 데이터 및 타임스탬프 관리
-        self.data = {
-            "total_resource": {},
-            "topics_hzbw": {},
-            "node_resource_usage": {},
-            "gpu_pmon": {}
-        }
+    def init_ui(self):
+        self.layout = QGridLayout(self)
 
-        self.last_data = deepcopy(self.data)  # 이전 데이터를 저장해 중복 방지
-        self.last_update = {key: 0 for key in self.data}
+        # 상단 CPU/RAM/GPU 정보 라벨
+        self.label_layout = QVBoxLayout()
+        self.cpu_label = QLabel('CPU Info: ...')
+        self.mem_label = QLabel('Memory Info: ...')
+        self.gpu_label = QLabel('GPU Info: ...')
 
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        self.file_path = os.path.expanduser(f'~/catkin_ws/src/ros_monitor/data/diag_{timestamp}.json')
+        self.label_layout.addWidget(self.cpu_label)
+        self.label_layout.addWidget(self.mem_label)
+        self.label_layout.addWidget(self.gpu_label)
+        self.layout.addLayout(self.label_layout, 0, 0, 1, 1)
 
-        rospy.Subscriber("/total_resource", Float32MultiArray, self.total_resource_callback)
-        rospy.Subscriber("/topics_hzbw", String, self.topics_hzbw_callback)
-        rospy.Subscriber("/nodes_resource", String, self.nodes_resource_callback)
-        rospy.Subscriber("/gpu_pmon", String, self.gpu_pmon_callback)
+        # Topic Hz/BW 테이블
+        self.topics_table = QTableWidget(0, 3)
+        self.topics_table.setHorizontalHeaderLabels(['Topic name', 'Hz', 'Bandwidth'])
+        self.topics_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.topics_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.topics_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.layout.addWidget(self.topics_table, 3, 0, 3, 1)
 
-        self.run()
+        # Node 자원 사용 테이블
+        self.nodes_table = QTableWidget(0, 3)
+        self.nodes_table.setHorizontalHeaderLabels(['Node name', 'CPU (%)', 'Ram'])
+        self.nodes_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.nodes_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.nodes_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.layout.addWidget(self.nodes_table, 3, 1, 3, 1)
 
-    # Callbacks
-    def total_resource_callback(self, msg):
-        keys = [
-            'cpu_user', 'cpu_nice', 'cpu_system', 'cpu_idle', 'cpu_iowait',
-            'cpu_irq', 'cpu_softirq', 'cpu_steal', 'cpu_guest', 'cpu_guest_nice',
-            'cpu_usage_percent', 'cpu_temp', 'cpu_load_1min', 'cpu_load_5min', 'cpu_load_15min',
-            'mem_used', 'mem_total', 'mem_usage_percent',
-            'gpu_usage_percent', 'gpu_mem_used', 'gpu_mem_total', 'gpu_mem_usage', 'gpu_temp'
-        ]
-        self.data["total_resource"] = dict(zip(keys, msg.data))
-        self.last_update["total_resource"] = time.time()
+        # GPU 프로세스 테이블
+        self.gpu_proc_table = QTableWidget(0, 10)
+        self.gpu_proc_table.setHorizontalHeaderLabels([
+            'pid', 'proc_name', 'type (C/G)', 'sm(%)', 'mem(%)',
+            'enc(%)', 'dec(%)', 'jpg(%)', 'ofa(%)', 'command'
+        ])
+        for i in range(0, 9):
+            self.gpu_proc_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
+        self.layout.addWidget(self.gpu_proc_table, 7, 0, 3, 2)
 
-    def topics_hzbw_callback(self, msg):
-        topics_list = json.loads(msg.data)
-        self.data["topics_hzbw"] = {
-            topic["topic"]: {"hz": topic["hz"], "bw": topic["bw"]} 
-            for topic in topics_list
-        }
-        self.last_update["topics_hzbw"] = time.time()
+        self.setLayout(self.layout)
 
-    def nodes_resource_callback(self, msg):
-        nodes_list = json.loads(msg.data)
-        self.data["node_resource_usage"] = {
-            node["node"]: {"cpu": node["cpu"], "mem": node["mem"]} 
-            for node in nodes_list
-        }
-        self.last_update["node_resource_usage"] = time.time()
-
-    def gpu_pmon_callback(self, msg):
-        self.data["gpu_pmon"] = json.loads(msg.data)
-        self.last_update["gpu_pmon"] = time.time()
-
-    # 데이터 관리
-    def clear_old_data(self):
-        current_time = time.time()
-        for key in self.data:
-            if current_time - self.last_update[key] > self.DATA_TIMEOUT:
-                self.data[key] = {}
-
-    def data_changed(self):
-        return self.data != self.last_data
-
-    def save_json_if_changed(self):
-        if self.data_changed():
-            with open(self.file_path, 'a') as f:
-                json.dump(self.data, f)
-                f.write('\n')
-            self.last_data = deepcopy(self.data)
-            rospy.loginfo("Data updated and saved.")
-        else:
-            rospy.loginfo("No data change; skip saving.")
-
-    def run(self):
-        rate = rospy.Rate(1)  # 1Hz
-        while not rospy.is_shutdown():
-            self.clear_old_data()            # 오래된 데이터 초기화
-            self.save_json_if_changed()      # 변경됐을 때만 저장
-            rate.sleep()
-
-if __name__ == "__main__":
-    try:
-        RosMonitorDataLogger()
-    except rospy.ROSInterruptException:
-        pass
+if __name__ == '__main__':
+    signal.signal(signal.SIGINT, signal_handler)
+    app = QApplication(sys.argv)
+    window = RosMonitor()
+    window.show()
+    sys.exit(app.exec())
