@@ -1,70 +1,33 @@
 #!/usr/bin/env python3
-import sys
-import signal
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel,
-    QTableWidget, QTableWidgetItem, QHeaderView
-)
-from PySide6.QtCore import Qt, QTimer
-import psutil
+import sys, json, os
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
+from PySide6.QtCore import QTimer
 
-def signal_handler(sig, frame):
-    QApplication.quit()
-    sys.exit(0)
-
-class RosMonitor(QWidget):
+class RosMonitorGUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('ROS Monitor UI (Only Layout)')
-        self.resize(1200, 900)
-        self.init_ui()
+        self.setWindowTitle("ROS Latency Monitor")
+        self.resize(600, 400)
 
-    def init_ui(self):
-        self.layout = QGridLayout(self)
+        self.label = QLabel("Waiting for data...")
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        self.setLayout(layout)
 
-        # 상단 CPU/RAM/GPU 정보 라벨
-        self.label_layout = QVBoxLayout()
-        self.cpu_label = QLabel('CPU Info: ...')
-        self.mem_label = QLabel('Memory Info: ...')
-        self.gpu_label = QLabel('GPU Info: ...')
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_data)
+        self.timer.start(1000)
 
-        self.label_layout.addWidget(self.cpu_label)
-        self.label_layout.addWidget(self.mem_label)
-        self.label_layout.addWidget(self.gpu_label)
-        self.layout.addLayout(self.label_layout, 0, 0, 1, 1)
+    def update_data(self):
+        try:
+            with open('/tmp/ros_latency_trace.json') as f:
+                data = json.load(f)
+            self.label.setText(str(data))
+        except:
+            self.label.setText("No data yet")
 
-        # Topic Hz/BW 테이블
-        self.topics_table = QTableWidget(0, 3)
-        self.topics_table.setHorizontalHeaderLabels(['Topic name', 'Hz', 'Bandwidth'])
-        self.topics_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.topics_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.topics_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.layout.addWidget(self.topics_table, 3, 0, 3, 1)
-
-        # Node 자원 사용 테이블
-        self.nodes_table = QTableWidget(0, 3)
-        self.nodes_table.setHorizontalHeaderLabels(['Node name', 'CPU (%)', 'Ram'])
-        self.nodes_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.nodes_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.nodes_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.layout.addWidget(self.nodes_table, 3, 1, 3, 1)
-
-        # GPU 프로세스 테이블
-        self.gpu_proc_table = QTableWidget(0, 10)
-        self.gpu_proc_table.setHorizontalHeaderLabels([
-            'pid', 'proc_name', 'type (C/G)', 'sm(%)', 'mem(%)',
-            'enc(%)', 'dec(%)', 'jpg(%)', 'ofa(%)', 'command'
-        ])
-        for i in range(0, 9):
-            self.gpu_proc_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
-        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.Stretch)
-        self.layout.addWidget(self.gpu_proc_table, 7, 0, 3, 2)
-
-        self.setLayout(self.layout)
-
-if __name__ == '__main__':
-    signal.signal(signal.SIGINT, signal_handler)
+if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = RosMonitor()
+    window = RosMonitorGUI()
     window.show()
     sys.exit(app.exec())

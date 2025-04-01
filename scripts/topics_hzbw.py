@@ -19,8 +19,9 @@ class TopicMonitor(threading.Thread):
         self.topic = topic
         self.timestamps = deque(maxlen=500)
         self.byte_sizes = deque(maxlen=500)
+
         self.subscriber = rospy.Subscriber(topic, rospy.AnyMsg, self.callback)
-        
+
         self.running = True
         
     def callback(self, msg):
