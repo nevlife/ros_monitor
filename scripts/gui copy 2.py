@@ -1,88 +1,57 @@
 #!/usr/bin/env python3
 import sys
 import os
-import sqlite3
 import signal
+import rospy
 import psutil
-import datetime
+import json
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QTableWidget,
-    QTableWidgetItem, QHeaderView
+    QWidget,
+    QVBoxLayout,
+    QGridLayout,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QApplication
 )
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import Qt, QTimer
+from std_msgs.msg import Float32MultiArray, String
 
-
-class DBReader:
-    def __init__(self, db_path):
-        self.conn = sqlite3.connect(db_path)
-        self.conn.row_factory = sqlite3.Row
-
-    def fetch_latest_total_resource(self):
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM total_resource ORDER BY timestamp DESC LIMIT 1")
-        return cur.fetchone()
-
-    def fetch_latest_node_resource(self):
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM node_resource ORDER BY timestamp DESC")
-        rows = cur.fetchall()
-        nodes = {}
-        for row in rows:
-            if row['node_name'] not in nodes:
-                nodes[row['node_name']] = {"cpu": row['cpu'], "mem": row['mem']}
-        return nodes
-
-    def fetch_latest_topic_hzbw(self):
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM topic_hzbw ORDER BY timestamp DESC")
-        rows = cur.fetchall()
-        topics = {}
-        for row in rows:
-            if row['topic_name'] not in topics:
-                topics[row['topic_name']] = {"hz": row['hz'], "bw": row['bw']}
-        return topics
-
-    def fetch_latest_gpu_pmon(self):
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM gpu_pmon ORDER BY timestamp DESC")
-        rows = cur.fetchall()
-        processes = {}
-        for row in rows:
-            pid = row['pid']
-            if pid not in processes:
-                processes[pid] = {
-                    "type": row['type'],
-                    "sm": row['sm_usage'],
-                    "mem": row['mem_usage'],
-                    "cmd": row['command']
-                }
-        return processes
-
-    def fetch_latest_alert_logs(self, limit=100):
-        cur = self.conn.cursor()
-        cur.execute("SELECT timestamp, level, source, message FROM alert_log ORDER BY timestamp DESC LIMIT ?", (limit,))
-        return cur.fetchall()
-
+def signal_handler(sig, frame):
+    QApplication.quit()
+    sys.exit(0)
 
 class RosMonitor(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ROS Monitor (DB)")
-        self.resize(1200, 1080)
 
-        self.db = DBReader(os.path.expanduser("~/catkin_ws/src/ros_monitor/data/data.db"))
+        rospy.init_node('ros_monitor_ui', anonymous=True)
+
+        self.setWindowTitle('ROS Monitor UI')
+        self.resize(1920, 1080)
+
+        self.total_resource_data = {}
+        self.topic_hzbw_data = {}
+        self.nodes_resource_data = {}
+        self.gpu_proc_data = {}
+
+        self.cpu_label = QLabel('CPU Info: -')
+        self.mem_label = QLabel('Memory Info: -')
+        self.gpu_label = QLabel('GPU Info: -')
+
         self.init_ui()
 
+        self.subscriber_setup()
+
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.refresh)
+        self.timer.timeout.connect(self.update_ui)
         self.timer.start(1000)
 
     def init_ui(self):
-        self.layout = QGridLayout(self)
+        logical_cores = psutil.cpu_count(logical=True)
 
-        self.cpu_label = QLabel("CPU Info")
-        self.mem_label = QLabel("Memory Info")
-        self.gpu_label = QLabel("GPU Info")
+        self.layout = QGridLayout(self)
 
         label_layout = QVBoxLayout()
         label_layout.addWidget(self.cpu_label)
@@ -91,90 +60,223 @@ class RosMonitor(QWidget):
         self.layout.addLayout(label_layout, 0, 0, 1, 2)
 
         self.topics_table = QTableWidget(0, 3)
-        self.topics_table.setHorizontalHeaderLabels(['Topic', 'Hz', 'Bandwidth'])
+        self.topics_table.setHorizontalHeaderLabels(['Topic name', 'Hz', 'Bandwidth'])
         self.topics_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.layout.addWidget(self.topics_table, 1, 0, 2, 1)
+        self.topics_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.topics_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.layout.addWidget(self.topics_table, 1, 0, 3, 1)
 
+        # 노드 테이블
         self.nodes_table = QTableWidget(0, 3)
-        self.nodes_table.setHorizontalHeaderLabels(['Node', 'CPU (%)', 'Memory'])
+        self.nodes_table.setHorizontalHeaderLabels(['Node name', f'CPU (%) \nLogical Core : {logical_cores}', 'Ram'])
         self.nodes_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.layout.addWidget(self.nodes_table, 1, 1, 2, 1)
+        self.nodes_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.nodes_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.layout.addWidget(self.nodes_table, 1, 1, 3, 1)
 
-        self.gpu_table = QTableWidget(0, 5)
-        self.gpu_table.setHorizontalHeaderLabels(['PID', 'Proc Name', 'Type', 'SM Usage', 'Command'])
-        self.gpu_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.gpu_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        self.layout.addWidget(self.gpu_table, 3, 0, 2, 2)
+        # GPU 프로세스 테이블
+        self.gpu_proc_table = QTableWidget(0, 9)
+        self.gpu_proc_table.setHorizontalHeaderLabels([
+            'pid', 'type', 'sm', 'mem',
+            'enc', 'dec', 'jpg', 'ofa', 'command'
+        ])
+        for i in range(0, 8):
+            self.gpu_proc_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        self.gpu_proc_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.Stretch)
+        self.layout.addWidget(self.gpu_proc_table, 4, 0, 3, 2)
 
-        self.log_terminal = QTableWidget(0, 2)
-        self.log_terminal.setHorizontalHeaderLabels(['Time', 'Message'])
-        self.log_terminal.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.log_terminal.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.layout.addWidget(self.log_terminal, 5, 0, 3, 2)
+        
+        self.setLayout(self.layout)
 
-    def refresh(self):
-        self.update_total_resource()
-        self.update_topic_table()
-        self.update_node_table()
+    def subscriber_setup(self):
+        rospy.Subscriber('/total_resource', Float32MultiArray, self.total_resource_callback)
+        rospy.Subscriber('/topics_hzbw', String, self.topic_hzbw_callback)
+        rospy.Subscriber('/nodes_resource', String, self.nodes_resource_callback)
+        rospy.Subscriber('/gpu_pmon', String, self.gpu_pmon_callback)
+
+    
+    def total_resource_callback(self, msg):
+        f = [
+            'cpu_user', 'cpu_nice', 'cpu_system', 'cpu_idle', 'cpu_iowait',
+            'cpu_irq', 'cpu_softirq', 'cpu_steal', 'cpu_guest', 'cpu_guest_nice',
+            'cpu_usage_percent', 'cpu_temp',
+            'cpu_load_1min', 'cpu_load_5min', 'cpu_load_15min',
+            'mem_used', 'mem_total', 'mem_usage_percent',
+            'gpu_usage_percent', 'gpu_mem_used', 'gpu_mem_total', 'gpu_mem_usage', 'gpu_temp'
+        ]
+        self.total_resource_data = {
+            n: v for n, v in zip(f, msg.data)
+        }
+        
+    def topic_hzbw_callback(self, msg):
+        tmp = {}
+        arr = json.loads(msg.data)
+        for i in arr:
+            tmp[i['topic']] = {
+                'hz': i['hz'],
+                'bw': i['bw']
+            }
+            
+        self.topic_hzbw_data = tmp
+        
+    def nodes_resource_callback(self, msg):
+        tmp = {}
+        arr = json.loads(msg.data)
+        for i in arr:
+            tmp[i['node']] = {
+                'cpu': i['cpu'],
+                'mem': i['mem']
+            }
+            
+        self.nodes_resource_data = tmp
+        
+    def gpu_pmon_callback(self, msg):
+        tmp = {}
+        arr = json.loads(msg.data)
+        for i in arr:
+            tmp[i['pid']] = {
+                'gpu_idx': i['gpu_idx'],
+                'type': i['type'],
+                'sm': i['sm'],
+                'mem': i['mem'],
+                'enc': i['enc'],
+                'dec': i['dec'],
+                'jpg': i['jpg'],
+                'ofa': i['ofa'],
+                'command': i['command'],
+            }
+            
+        self.gpu_proc_data = tmp
+        
+    def update_ui(self):
+        self.update_labels()
+        self.update_topics_table()
+        self.update_nodes_table()
         self.update_gpu_table()
-        self.update_alert_logs()
 
-    def update_total_resource(self):
-        row = self.db.fetch_latest_total_resource()
-        if not row:
-            return
-        self.cpu_label.setText(f"CPU: {row['cpu_usage_percent']:.2f}% | Temp: {row['cpu_temp']:.1f}°C")
-        self.mem_label.setText(f"Memory: {row['mem_used']:.1f}/{row['mem_total']:.1f} MB ({row['mem_usage_percent']:.1f}%)")
-        self.gpu_label.setText(f"GPU: {row['gpu_usage_percent']:.1f}% | Temp: {row['gpu_temp']:.1f}°C | Mem Usage: {row['gpu_mem_usage']:.1f}%")
 
-    def update_topic_table(self):
-        data = self.db.fetch_latest_topic_hzbw()
-        self.topics_table.setRowCount(len(data))
-        for row, (name, info) in enumerate(data.items()):
-            self._set_table_row(self.topics_table, row, [name, f"{info['hz']:.2f}", info['bw']])
+    def update_labels(self):
+        cpu_usage = self.total_resource_data.get('cpu_usage_percent', 0.0)
+        cpu_temp = self.total_resource_data.get('cpu_temp', 0.0)
+        load_1 = self.total_resource_data.get('cpu_load_1min', 0.0)
+        load_5 = self.total_resource_data.get('cpu_load_5min', 0.0)
+        load_15 = self.total_resource_data.get('cpu_load_15min', 0.0)
 
-    def update_node_table(self):
-        data = self.db.fetch_latest_node_resource()
-        self.nodes_table.setRowCount(len(data))
-        for row, (name, info) in enumerate(data.items()):
-            self._set_table_row(self.nodes_table, row, [name, f"{info['cpu']:.2f}", info['mem']])
+        mem_usage_percent = self.total_resource_data.get('mem_usage_percent', 0.0)
+        mem_used = self.total_resource_data.get('mem_used', 0.0)
+        mem_total = self.total_resource_data.get('mem_total', 0.0)
 
+        gpu_usage = self.total_resource_data.get('gpu_usage_percent', 0.0)
+        gpu_mem_used = self.total_resource_data.get('gpu_mem_used', 0.0)
+        gpu_mem_total = self.total_resource_data.get('gpu_mem_total', 0.0)
+        gpu_temp = self.total_resource_data.get('gpu_temp', 0.0)
+
+        self.cpu_label.setText(
+            f'CPU: {cpu_usage:.2f}% | Temp: {cpu_temp:.1f}C | Load: {load_1:.2f}, {load_5:.2f}, {load_15:.2f}'
+        )
+        self.mem_label.setText(
+            f'Mem: {mem_used:.1f}/{mem_total:.1f} MB ({mem_usage_percent:.2f}%)'
+        )
+        self.gpu_label.setText(
+            f'GPU: {gpu_usage:.2f}% | Mem: {gpu_mem_used:.1f}/{gpu_mem_total:.1f} MB | Temp: {gpu_temp:.1f}C'
+        )
+        
+
+    def update_topics_table(self):
+        self.topics_table.setRowCount(len(self.topic_hzbw_data))
+        for idx, (n, v) in enumerate(self.topic_hzbw_data.items()):
+            hz_val = v.get('hz', 0.0)
+            bw_val = v.get('bw', '0 B/s')
+
+            t_item = QTableWidgetItem(n)
+            hz_item = QTableWidgetItem(str(hz_val))
+            bw_item = QTableWidgetItem(str(bw_val))
+
+            for it in [t_item, hz_item, bw_item]:
+                it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+            self.topics_table.setItem(idx, 0, t_item)
+            self.topics_table.setItem(idx, 1, hz_item)
+            self.topics_table.setItem(idx, 2, bw_item)
+
+    def update_nodes_table(self):
+        self.nodes_table.setRowCount(len(self.nodes_resource_data))
+        for idx, (n, resources) in enumerate(self.nodes_resource_data.items()):
+            cpu_val = resources.get('cpu', 0.0)
+            mem_val = resources.get('mem', 'N/A')
+
+            n_item = QTableWidgetItem(n)
+            cpu_item = QTableWidgetItem(f'{cpu_val:.2f}')
+            mem_item = QTableWidgetItem(str(mem_val))
+
+            for it in [n_item, cpu_item, mem_item]:
+                it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+            self.nodes_table.setItem(idx, 0, n_item)
+            self.nodes_table.setItem(idx, 1, cpu_item)
+            self.nodes_table.setItem(idx, 2, mem_item)
+            
     def update_gpu_table(self):
-        data = self.db.fetch_latest_gpu_pmon()
-        self.gpu_table.setRowCount(len(data))
-        for row, (pid, info) in enumerate(data.items()):
-            try:
-                proc_name = psutil.Process(int(pid)).name()
-            except:
-                proc_name = "-"
-            self._set_table_row(self.gpu_table, row, [
-                pid, proc_name, info['type'], f"{info['sm']:.1f}", info['cmd']
-            ])
+        self.gpu_proc_table.setRowCount(len(self.gpu_proc_data))
+        for idx, (pid_str, info) in enumerate(self.gpu_proc_data.items()):
+            type_ = info.get('type', '-')
+            sm_ = info.get('sm', 0.0)
+            mem_ = info.get('mem', 0.0)
+            enc_ = info.get('enc', 0.0)
+            dec_ = info.get('dec', 0.0)
+            jpg_ = info.get('jpg', 0.0)
+            ofa_ = info.get('ofa', 0.0)
+            cmd_ = info.get('command', '-')
 
-    def update_alert_logs(self):
-        logs = self.db.fetch_latest_alert_logs()
-        self.log_terminal.setRowCount(len(logs))
+            pid_item = QTableWidgetItem(pid_str)
+            type_item = QTableWidgetItem(type_)
+            sm_item = QTableWidgetItem(f'{sm_}')
+            mem_item = QTableWidgetItem(f'{mem_}')
+            enc_item = QTableWidgetItem(f'{enc_}')
+            dec_item = QTableWidgetItem(f'{dec_}')
+            jpg_item = QTableWidgetItem(f'{jpg_}')
+            ofa_item = QTableWidgetItem(f'{ofa_}')
+            cmd_item = QTableWidgetItem(cmd_)
 
-        for row_idx, log in enumerate(logs):
-            timestamp = datetime.datetime.fromtimestamp(log['timestamp']).strftime("%Y-%m-%d %H:%M:%S")
-            message = f"[{log['level']}] ({log['source']}) {log['message']}"
-            self._set_table_row(self.log_terminal, row_idx, [timestamp, message])
+            for it in [pid_item, type_item, sm_item, mem_item,
+                       enc_item, dec_item, jpg_item, ofa_item, cmd_item]:
+                it.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 
-    def _set_table_row(self, table, row, values):
-        for col, val in enumerate(values):
-            item = QTableWidgetItem(val)
-            item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-            table.setItem(row, col, item)
-
-
-def signal_handler(sig, frame):
-    QApplication.quit()
-    sys.exit(0)
+            self.gpu_proc_table.setItem(idx, 0, pid_item)
+            self.gpu_proc_table.setItem(idx, 1, type_item)
+            self.gpu_proc_table.setItem(idx, 2, sm_item)
+            self.gpu_proc_table.setItem(idx, 3, mem_item)
+            self.gpu_proc_table.setItem(idx, 4, enc_item)
+            self.gpu_proc_table.setItem(idx, 5, dec_item)
+            self.gpu_proc_table.setItem(idx, 6, jpg_item)
+            self.gpu_proc_table.setItem(idx, 7, ofa_item)
+            self.gpu_proc_table.setItem(idx, 8, cmd_item)
 
 
-if __name__ == "__main__":
+def main():
     signal.signal(signal.SIGINT, signal_handler)
+
     app = QApplication(sys.argv)
     window = RosMonitor()
     window.show()
+
+    # ROS 스핀 (QApplication.exec_()와 병행 시, 스레드를 쓰거나
+    # python 실행 순서에 따라 조정 필요. 간단히는 spinOnce를 타이머에 넣는 방법도 있음.)
+    #
+    # 방법1) rospy와 QT 모두 메인스레드에서 돌리기는 tricky하므로, 다음처럼:
+    #   import threading
+    #   spinner = threading.Thread(target=rospy.spin)
+    #   spinner.start()
+    #
+    # 방법2) or ros::spinOnce를 QTimer에서 주기적으로 돌리는 식.
+    #
+    # 여기서는 예시로 threading 사용 (간단히 시연)
+    
+    import threading
+    spinner = threading.Thread(target=rospy.spin)
+    spinner.start()
+
     sys.exit(app.exec())
+
+if __name__ == '__main__':
+    main()
