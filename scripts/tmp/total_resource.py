@@ -9,7 +9,7 @@ from std_msgs.msg import Float32MultiArray
 
 class SystemStatusMonitor:
     def __init__(self):
-        rospy.init_node("total_resource", anonymous=True)
+        rospy.init_node("total_resource_node", anonymous=True)
         self.rate = rospy.Rate(1)  # 1Hz
         self.publisher = rospy.Publisher("/total_resource", Float32MultiArray, queue_size=100)
 

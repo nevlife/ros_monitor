@@ -132,7 +132,7 @@ def get_pmon_data():
     return data
 
 def main():
-    rospy.init_node("gpu_pmon_publisher", anonymous=True)
+    rospy.init_node("gpu_pmon_node", anonymous=True)
     pub = rospy.Publisher("/gpu_pmon", String, queue_size=100)
 
     rate = rospy.Rate(1)

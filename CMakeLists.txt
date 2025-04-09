@@ -26,8 +26,15 @@ pkg_check_modules(JSONCPP jsoncpp)
 add_message_files(
   FILES
   NodeStatus.msg
-  # Message1.msg
-  # Message2.msg
+  Error.msg
+  Gui.msg
+  GuiInfo.msg
+  KeyValue.msg
+  Machine.msg
+  MonitoringArray.msg
+  MonitoringInfo.msg
+  Process.msg
+  Processes.msg
 )
 
 generate_messages(
@@ -77,5 +84,5 @@ target_link_libraries(dummy_cuda_node ${catkin_LIBRARIES} ${NVML_LIBRARY} cudart
 add_executable(total_resource_cpp scripts/cpp/total_resource.cpp)
 target_link_libraries(total_resource_cpp ${catkin_LIBRARIES} ${NVML_LIBRARY})
 
-add_executable(gpu_mon_cupti scripts/GpuMonCupti.cu)
+add_executable(gpu_mon_cupti scripts/test/GpuMonCupti.cu)
 target_link_libraries(gpu_mon_cupti ${catkin_LIBRARIES} ${NVML_LIBRARY} ${CUPTI_LIBRARY} ${CUDA_CUDART_LIBRARY} cudart)

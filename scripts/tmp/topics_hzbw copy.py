@@ -5,7 +5,6 @@ import rospy
 import rosgraph.masterapi
 from std_msgs.msg import String
 
-import csv
 import json
 
 import threading
@@ -89,7 +88,7 @@ class ROSTopicMonitor:
         self.yaml_path = '/home/pgw/catkin_ws/src/ros_monitor/cfg/topic_lst.yaml'
         self.monitored_topics = self.load_yaml()
         
-        rospy.init_node("topics_hzbw", anonymous=True)
+        rospy.init_node("topics_hzbw_node", anonymous=True)
         
         #self.master = rosgraph.masterapi.Master('/roscore')
         try:
@@ -106,7 +105,6 @@ class ROSTopicMonitor:
         self.monitor_thread = threading.Thread(target=self.run_monitoring)
         self.monitor_thread.start()
     
-        
     def load_yaml(self):
         if not os.path.exists(self.yaml_path):
             rospy.logerr(f"[monitor] yaml fiel not found: {self.yaml_path}")
@@ -115,13 +113,13 @@ class ROSTopicMonitor:
         try:
             with open(self.yaml_path, 'r') as f:
                 topics = {line.strip() for line in f if line.strip()}
-                
+                print(topics)
                 rospy.loginfo(f"[monitor] list of topics to monitor: {topics}")
                 return topics
         except Exception as e:
             rospy.logerr(f"[monitor] Error loading yaml file: {e}")
             return None
-        
+
     def update_subscriptions(self):
         active_topics = {t[0] for t in self.master.getSystemState()[0]}  #현재 실행 중인 토픽 목록
         
@@ -170,7 +168,7 @@ class ROSTopicMonitor:
                 "hz": hz,
                 "bw": bw,
             }
-            print(topic_metrics)
+            #print(topic_metrics)
             topic_metrics_list.append(topic_metrics)
 
         if topic_metrics_list:

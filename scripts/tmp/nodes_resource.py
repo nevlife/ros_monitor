@@ -62,7 +62,7 @@ class GpuNodeManager:
         
         
 def main():
-    rospy.init_node('nodes_resource', anonymous=False)
+    rospy.init_node('nodes_resource_node', anonymous=False)
     master = rospy.get_master()
     rate = rospy.Rate(1)
 
