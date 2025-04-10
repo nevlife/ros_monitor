@@ -3,10 +3,13 @@
 
 import json
 import atexit
+import psutil
 from collections import deque
 
-import psutil
 import rospy
+import logging
+from functools import partial
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QGridLayout, QLabel,
     QTableWidget, QTableWidgetItem, QHeaderView,
@@ -16,11 +19,8 @@ from PySide6.QtGui import QFont, QColor
 from PySide6.QtCore import Qt, QTimer, Signal, QObject, Slot
 from std_msgs.msg import Float32MultiArray, String
 
-# /monitoring 토픽 메시지 타입 import
 from ros_monitor.msg import MonitoringArray
-
-# ros_tracker 모듈은 find_topic_connections, find_node_connections, find_node_pid 등의 함수를 제공한다고 가정
-import ros_tracker  
+import ros_tracker
 
 MAX_LOG_LINES = 500
 
@@ -60,12 +60,18 @@ class RosMonitor(QWidget):
         self.bold_font.setBold(True)
 
         self.init_ui()
-        self.setup_subscribers()
+        
+        rospy.Subscriber('/monitoring', MonitoringArray, self.monitoring_callback, queue_size=10)
 
         # 1초마다 UI 업데이트
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(1000)
+        
+        #클릭타이머
+        self.click_timer = QTimer(self)
+        self.click_timer.setSingleShot(True)
+        self.click_processing = False
 
     def init_ui(self):
         logical_cores = psutil.cpu_count(logical=True)
@@ -115,12 +121,6 @@ class RosMonitor(QWidget):
 
         self.setLayout(self.layout)
 
-    def setup_subscribers(self):
-        # /monitoring 토픽 구독 (core.py에서 발행)
-        rospy.Subscriber('/monitoring', MonitoringArray, self.monitoring_callback, queue_size=10)
-        
-        # 디버깅 로그
-        self.append_log("Subscribed to /monitoring topic")
 
     def update_ui(self):
         self.update_labels()
@@ -137,117 +137,86 @@ class RosMonitor(QWidget):
                 
                 # MonitoringInfo의 type 필드를 기반으로 데이터 분류
                 if monitor_type == "topic_hzbw":
-                    self.process_topic_data(info)
+                    for value in info.values:
+                        # hz_/topic/name 또는 topic_name_hz 형식 처리
+                        if value.key.startswith("hz_"):
+                            topic_name = value.key[3:]  # "hz_" 접두사 제거
+                            
+                            if topic_name not in self.topic_hzbw_data:
+                                self.topic_hzbw_data[topic_name] = {}
+                            
+                            # Hz 값과 오류 수준 저장
+                            self.topic_hzbw_data[topic_name]['hz'] = float(value.value) if value.value else 0
+                            self.topic_hzbw_data[topic_name]['hz_target'] = value.target
+                            self.topic_hzbw_data[topic_name]['hz_errorlevel'] = value.errorlevel
+                            
+                            # 오류 수준이 높은 경우 로그 기록
+                            # if value.errorlevel :
+                            #     self.append_log(f"[ERROR] Topic {topic_name}: frequency too low - {float(value.errorlevel):.2f} Hz")
+                            # elif value.errorlevel >= 1.0:
+                            #     self.append_log(f"[WARNING] Topic {topic_name}: frequency below target - {float(value.errorlevel):.2f} Hz")
+                        
+                        # bw_/topic/name 또는 topic_name_bw 형식 처리
+                        elif value.key.startswith("bw_"):
+                            topic_name = value.key[3:]  # "bw_" 접두사 제거
+                            
+                            if topic_name not in self.topic_hzbw_data:
+                                self.topic_hzbw_data[topic_name] = {}
+                            
+                            # 대역폭 값과 함께 단위도 저장
+                            self.topic_hzbw_data[topic_name]['bw'] = float(value.value) if value.value else 0
+                            self.topic_hzbw_data[topic_name]['bw_unit'] = value.unit  # 단위 정보 저장
+                            
                 elif monitor_type == "nodes_resource":
-                    self.process_node_data(info)
+                     for value in info.values:
+                        if value.key.startswith("cpu_"):
+                            node_name = value.key.replace("cpu_", "")
+
+                            if node_name not in self.nodes_resource_data:
+                                self.nodes_resource_data[node_name] = {}
+                            cpu = value.value
+                            self.nodes_resource_data[node_name]['cpu'] = value.value
+                            
+                            # CPU 사용량이 높은 경우 로그 기록
+                            if cpu > 90:
+                                self.append_log(f"[ERROR] Node {node_name}: high CPU usage - {cpu:.2f}%")
+                            elif cpu > 80:
+                                self.append_log(f"[WARNING] Node {node_name}: elevated CPU usage - {cpu:.2f}%")
+                        
+                        elif value.key.startswith("mem_"):
+                            node_name = value.key.replace("mem_", "")
+                            
+                            if node_name not in self.nodes_resource_data:
+                                self.nodes_resource_data[node_name] = {}
+
+                            self.nodes_resource_data[node_name]['mem'] = value.value
                 elif monitor_type == "system_resource":
-                    self.process_system_data(info)
-                # elif monitor_type == "gpu":
-                #     self.process_gpu_data(info)
+                     # 처리할 키 목록 정의
+                    system_keys = [
+                        "cpu_usage", "cpu_temp", 
+                        "load_avg_1min", "load_avg_5min", "load_avg_15min", 
+                        "mem_used", "mem_total", "mem_usage_percent",
+                        "gpu_usage", "gpu_mem_used", "gpu_mem_total", "gpu_mem_usage_percent", "gpu_temp"
+                    ]
+                    
+                    for value in info.values:
+                        # 해당 키가 목록에 있으면 데이터 저장
+                        if value.key in system_keys:
+            
+                            # 값, 단위 및 오류 수준 저장 
+                            self.total_resource_data[value.key] = {
+                                'value': float(value.value) if value.value else 0,
+                                'unit': value.unit,
+                                'errorlevel': value.errorlevel,
+                                'target': value.target
+                            }
+                            
                 else:
-                    # 알 수 없는 타입인 경우 키 검사하여 분류
-                    self.process_unknown_data(info)
+                    pass
+                
         except Exception as e:
             rospy.logerr(f"[ui] Error processing monitoring data: {str(e)}")
             self.append_log(f"Error processing monitoring data: {str(e)}")
-            
-    def process_topic_data(self, info):
-        """토픽 관련 모니터링 데이터 처리"""
-        for value in info.values:
-            # hz_/topic/name 또는 topic_name_hz 형식 처리
-            if value.key.startswith("hz_"):
-                topic_name = value.key[3:]  # "hz_" 접두사 제거
-                
-                if topic_name not in self.topic_hzbw_data:
-                    self.topic_hzbw_data[topic_name] = {}
-                
-                # Hz 값과 오류 수준 저장
-                self.topic_hzbw_data[topic_name]['hz'] = float(value.value) if value.value else 0
-                self.topic_hzbw_data[topic_name]['hz_target'] = value.target
-                self.topic_hzbw_data[topic_name]['hz_errorlevel'] = value.errorlevel
-                
-                # 오류 수준이 높은 경우 로그 기록
-                # if value.errorlevel :
-                #     self.append_log(f"[ERROR] Topic {topic_name}: frequency too low - {float(value.errorlevel):.2f} Hz")
-                # elif value.errorlevel >= 1.0:
-                #     self.append_log(f"[WARNING] Topic {topic_name}: frequency below target - {float(value.errorlevel):.2f} Hz")
-            
-            # bw_/topic/name 또는 topic_name_bw 형식 처리
-            elif value.key.startswith("bw_"):
-                topic_name = value.key[3:]  # "bw_" 접두사 제거
-                
-                if topic_name not in self.topic_hzbw_data:
-                    self.topic_hzbw_data[topic_name] = {}
-                
-                # 대역폭 값과 함께 단위도 저장
-                self.topic_hzbw_data[topic_name]['bw'] = float(value.value) if value.value else 0
-                self.topic_hzbw_data[topic_name]['bw_unit'] = value.unit  # 단위 정보 저장
-
-    
-    def process_node_data(self, info):
-        """노드 관련 모니터링 데이터 처리"""
-        for value in info.values:
-            if value.key.startswith("cpu_"):
-                node_name = value.key.replace("cpu_", "")
-
-                if node_name not in self.nodes_resource_data:
-                    self.nodes_resource_data[node_name] = {}
-                cpu = value.value
-                self.nodes_resource_data[node_name]['cpu'] = value.value
-                
-                # CPU 사용량이 높은 경우 로그 기록
-                if cpu > 90:
-                    self.append_log(f"[ERROR] Node {node_name}: high CPU usage - {cpu:.2f}%")
-                elif cpu > 80:
-                    self.append_log(f"[WARNING] Node {node_name}: elevated CPU usage - {cpu:.2f}%")
-            
-            elif value.key.startswith("mem_"):
-                node_name = value.key.replace("mem_", "")
-                
-                if node_name not in self.nodes_resource_data:
-                    self.nodes_resource_data[node_name] = {}
-
-                self.nodes_resource_data[node_name]['mem'] = value.value
-
-    def process_system_data(self, info):
-        """시스템 리소스 데이터 처리"""
-        # 처리할 키 목록 정의
-        system_keys = [
-            "cpu_usage", "cpu_temp", 
-            "load_avg_1min", "load_avg_5min", "load_avg_15min", 
-            "mem_used", "mem_total", "mem_usage_percent",
-            "gpu_usage", "gpu_mem_used", "gpu_mem_total", "gpu_mem_usage_percent", "gpu_temp"
-        ]
-        
-        for value in info.values:
-            # 해당 키가 목록에 있으면 데이터 저장
-            if value.key in system_keys:
-  
-                # 값, 단위 및 오류 수준 저장
-                self.total_resource_data[value.key] = {
-                    'value': float(value.value) if value.value else 0,
-                    'unit': value.unit,
-                    'errorlevel': value.errorlevel,
-                    'target': value.target
-                }
-
-    def process_unknown_data(self, info):
-        for value in info.values:
-            key = value.key
-            
-            # 키 이름으로 데이터 유형 추측
-            if key.startswith("topic_") or key.startswith("hz_") or key.startswith("bw_"):
-                # 토픽 관련 데이터로 간주
-                self.process_topic_data(info)
-                break
-            elif key.startswith("node_"):
-                # 노드 관련 데이터로 간주
-                self.process_node_data(info)
-                break
-            elif key.startswith("cpu_") or key.startswith("memory_") or key.startswith("disk_"):
-                # 시스템 리소스 데이터로 간주
-                self.process_system_data(info)
-                break
 
     def update_labels(self):
         """헤더 라벨 업데이트"""
@@ -375,83 +344,118 @@ class RosMonitor(QWidget):
             self.gpu_proc_table.setItem(row, 7, ofa_item)
             self.gpu_proc_table.setItem(row, 8, cmd_item)
 
+        
     def topic_clicked(self, row, col):
-        """토픽 테이블 항목 클릭 핸들러"""
+        if self.click_processing:
+            return
+        self.click_processing = True
+        
         topic_item = self.topics_table.item(row, 0)
         if not topic_item:
+            self.click_processing = False
             return
+            
         clicked_topic = topic_item.text()
-        pubs, subs = ros_tracker.find_topic_connections(clicked_topic)
-        print(pubs, subs)
+        
         self.append_log("\n\n===================================================")
-        self.append_log(f"<b>Topic : \"{clicked_topic}\"</b>")
-        self.append_log(f"Nodes publishing this topic: {pubs}")
-        self.append_log(f"Nodes subscribing to this topic: {subs}")
+        self.append_log(f"Topic : \"{clicked_topic}\"")
+        
+        QApplication.processEvents()
+        
+        try:
+            pubs, subs = ros_tracker.find_topic_connections(clicked_topic)
+            
+            self.append_log(f"Nodes publishing this topic: {pubs}")
+            self.append_log(f"Nodes subscribing to this topic: {subs}")
+            QApplication.processEvents()  # UI 갱신
 
-        self.append_log("\n<b>Nodes publishing the clicked topic</b>\n")
-        if pubs:
-            for pub_node in pubs:
-                pub_topics, sub_topics = ros_tracker.find_node_connections(pub_node)
-                self.append_log(f"<b>Node : {pub_node}</b>")
-                self.append_log("Publishes :")
-                for topic in pub_topics:
-                    self.append_log(f'      {topic}')
-                self.append_log("Subscribes :")
-                for topic in sub_topics:
-                    self.append_log(f'      {topic}')
-                self.append_log("\n")
-        else:
-            self.append_log("Not Found")
+            self.append_log("\nNodes publishing the clicked topic\n")
+            if pubs:
+                for pub_node in pubs:
+                    # 중간에 이벤트 처리 허용
+                    QApplication.processEvents()
+                    
+                    pub_topics, sub_topics = ros_tracker.find_node_connections(pub_node)
+                    self.append_log(f"Node : {pub_node}")
+                    self.append_log("Publishes :")
+                    for topic in pub_topics:
+                        self.append_log(f'      {topic}')
+                    self.append_log("Subscribes :")
+                    for topic in sub_topics:
+                        self.append_log(f'      {topic}')
+                    self.append_log("\n")
+                    
+                    # 각 노드 처리 후 이벤트 처리
+                    QApplication.processEvents()
+            else:
+                self.append_log("Not Found")
 
-        self.append_log("\n<b>Nodes subscribing to the clicked topic</b>\n")
-        if subs:
-            for sub_node in subs:
-                pub_topics, sub_topics = ros_tracker.find_node_connections(sub_node)
-                self.append_log(f"<b>Node : {sub_node}</b>")
-                self.append_log("Publishes :")
-                for topic in pub_topics:
-                    self.append_log(f'      {topic}')
-                self.append_log("Subscribes :")
-                for topic in sub_topics:
-                    self.append_log(f'      {topic}')
-                self.append_log("\n")
-        else:
-            self.append_log("Not Found")
-
+            self.append_log("\nNodes subscribing to the clicked topic\n")
+            if subs:
+                for sub_node in subs:
+                    # 중간에 이벤트 처리 허용
+                    QApplication.processEvents()
+                    
+                    pub_topics, sub_topics = ros_tracker.find_node_connections(sub_node)
+                    self.append_log(f"Node : {sub_node}")
+                    self.append_log("Publishes :")
+                    for topic in pub_topics:
+                        self.append_log(f'      {topic}')
+                    self.append_log("Subscribes :")
+                    for topic in sub_topics:
+                        self.append_log(f'      {topic}')
+                    self.append_log("\n")
+                    
+                    # 각 노드 처리 후 이벤트 처리
+                    QApplication.processEvents()
+            else:
+                self.append_log("Not Found")
+        except Exception as e:
+            self.append_log(f"오류 발생: {str(e)}")
+        finally:
+            self.click_processing = False
+        
     def node_clicked(self, row, col):
-        """노드 테이블 항목 클릭 핸들러"""
-        node_item = self.nodes_table.item(row, 0)
-        if not node_item:
+        if self.click_processing:
             return
-        node_name = node_item.text()
-        self.append_log(f'\n\n===================================================')
-        self.append_log(f'<b>Node Clicked:</b> "{node_name}"')
-        pub_topics, sub_topics = ros_tracker.find_node_connections(node_name)
-        self.append_log('<b>Publishes topic:</b>')
-        for topic in pub_topics:
-            self.append_log(f'   {topic}')
-        self.append_log('<b>Subscribes topic:</b>')
-        for topic in sub_topics:
-            self.append_log(f'   {topic}')
-
-        pid, cmdline = ros_tracker.find_node_pid(node_name)
-        if pid:
-            self.append_log(f'<b>PID:</b> {pid}')
-            self.append_log(f'<b>Command:</b> {cmdline}')
-        else:
-            self.append_log('<b>PID:</b> Not Found')
-
-    # def append_log(self, text: str):
-    #     """로그 영역에 텍스트 추가"""
-    #     scroll_bar = self.log_widget.verticalScrollBar()
-    #     at_bottom = scroll_bar.value() == scroll_bar.maximum()
-    #     self.log_lines.append(text)
-    #     if len(self.log_lines) == MAX_LOG_LINES:
-    #         self.log_widget.setPlainText('\n'.join(self.log_lines))
-    #     else:
-    #         self.log_widget.appendPlainText(text)
-    #     if at_bottom:
-    #         self.log_widget.verticalScrollBar().setValue(self.log_widget.verticalScrollBar().maximum())
+        self.click_processing = True
+        
+        try:
+            node_item = self.nodes_table.item(row, 0)
+            if not node_item:
+                return
+            node_name = node_item.text()
+            
+            # 클릭 처리 준비 메시지 표시
+            self.append_log(f'\n\n===================================================')
+            self.append_log(f'Node Clicked: "{node_name}" - 정보 로딩 중...')
+            
+            # 이벤트 처리를 위한 호출 - UI 갱신 허용
+            QApplication.processEvents()
+            
+            # 무거운 ROS 작업 실행
+            pub_topics, sub_topics = ros_tracker.find_node_connections(node_name)
+            
+            self.append_log('Publishes topic:')
+            for topic in pub_topics:
+                self.append_log(f'   {topic}')
+            self.append_log('Subscribes topic:')
+            for topic in sub_topics:
+                self.append_log(f'   {topic}')
+            
+            QApplication.processEvents()  # UI 갱신
+            
+            pid, cmdline = ros_tracker.find_node_pid(node_name)
+            if pid:
+                self.append_log(f'PID: {pid}')
+                self.append_log(f'Command: {cmdline}')
+            else:
+                self.append_log('PID: Not Found')
+        except Exception as e:
+            self.append_log(f"오류 발생: {str(e)}")
+        finally:
+            self.click_processing = False
+        
     def append_log(self, text: str):
             """스레드 안전하게 로그를 추가하는 메서드"""
             # 로그 핸들러를 통해 메인 스레드로 신호 전달
@@ -515,7 +519,6 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
         
-    # Qt 애플리케이션 생성 및 실행
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(True)
 
@@ -525,19 +528,15 @@ def main():
     app.aboutToQuit.connect(lambda: cleanup(window))
 
 
-    # 별도 스레드에서 ROS spin 실행
     ros_thread = threading.Thread(target=rospy.spin)
-    ros_thread.daemon = True  # 메인 스레드 종료 시 자동 종료
+    ros_thread.daemon = True
     ros_thread.start()
     
-    # 종료 시 정리 작업
     atexit.register(lambda: safe_shutdown())
     
     try:
-        # Qt 이벤트 루프 실행
         sys.exit(app.exec())
     except SystemExit:
-        # 정상 종료
         pass
     except Exception as e:
         print(f"Unexpected error: {e}")
